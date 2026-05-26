@@ -12,7 +12,7 @@ export interface CouponValidationResult {
   affiliate?: string | null;
 }
 
-const BASE_PRICE_CENTS = 75000;
+const BASE_PRICE_CENTS = 100000;
 
 export async function validateCoupon(
   stripe: StripeClient,

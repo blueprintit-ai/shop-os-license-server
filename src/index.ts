@@ -247,6 +247,7 @@ async function handleList(req: Request, env: Env): Promise<Response> {
   const list = await env.LICENSES.list({ limit: 1000 });
   const records: LicenseRecord[] = [];
   for (const k of list.keys) {
+    if (!k.name.startsWith("SHOP-")) continue;
     const r = await env.LICENSES.get<LicenseRecord>(k.name, "json");
     if (r) records.push(r);
   }

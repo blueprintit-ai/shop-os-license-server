@@ -47,8 +47,7 @@ When the installer asks for your license key, paste this:
 NEED HELP?
 ${"─".repeat(60)}
 
-Reply to this email. A real human (Glenn) reads every message and
-responds within one business hour.
+Reply to your welcome email. We will respond ASAP.
 
 Welcome aboard.
 
@@ -136,7 +135,7 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <!-- § 03 Help -->
 <tr><td style="padding:28px 0 0;">
 <div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 03 &nbsp;·&nbsp; Need help?</div>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 0;">Reply to this email. A real human (Glenn) reads every message and responds within one business hour.</p>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 0;">Reply to your welcome email. We will respond ASAP.</p>
 </td></tr>
 
 <!-- Signature -->

@@ -52,9 +52,10 @@ responds within one business hour.
 
 Welcome aboard.
 
-Glenn Chua
-Blueprint IT
+Glenn Chua, Founder
+Blueprint IT, LLC
 glenn@blueprintit.ai
+www.blueprintit.ai
 `;
 }
 
@@ -142,9 +143,10 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <tr><td style="padding:32px 0 0;">
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0;">Welcome aboard.</p>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.5;color:#0c1e2f;margin:18px 0 0;">
-<strong style="font-weight:600;">Glenn Chua</strong><br/>
-Blueprint<em style="font-style:italic;color:#c2461f;font-weight:600;">IT</em><br/>
-<a href="mailto:glenn@blueprintit.ai" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">glenn@blueprintit.ai</a>
+<strong style="font-weight:600;">Glenn Chua</strong>, Founder<br/>
+Blueprint<em style="font-style:italic;color:#c2461f;font-weight:600;">IT</em>, LLC<br/>
+<a href="mailto:glenn@blueprintit.ai" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">glenn@blueprintit.ai</a><br/>
+<a href="https://blueprintit.ai" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">www.blueprintit.ai</a>
 </p>
 </td></tr>
 

@@ -575,7 +575,7 @@ function buildEmailTemplate(lic) {
     \`\`,
     \`To install:\`,
     \`\`,
-    \`1. Sign up for Claude Max at https://claude.ai (~$100/month).\`,
+    \`1. Sign up for Claude Pro at https://claude.ai (~$20/month). Upgrade to Max (~$100/month) later if your team's daily usage demands it.\`,
     \`2. Install Claude Code from https://claude.ai/code.\`,
     \`3. Open Terminal (Mac) or PowerShell (Windows) and paste:\`,
     \`\`,

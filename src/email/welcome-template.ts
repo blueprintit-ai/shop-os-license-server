@@ -33,7 +33,7 @@ re-download it any time from:
 
     ${input.pdfUrl}
 
-Open the PDF and follow the four prerequisite installs (Claude Max, Node.js,
+Open the PDF and follow the four prerequisite installs (Claude Pro, Node.js,
 Claude Code, Obsidian), then run this one command in Terminal (Mac) or
 PowerShell (Windows):
 
@@ -126,7 +126,7 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <tr><td style="padding:28px 0 0;">
 <div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 02 &nbsp;·&nbsp; Install Shop OS</div>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px;">The full install guide is attached to this email as a PDF. You can also <a href="${safeUrl}" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">re-download it any time</a>.</p>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 8px;">Open the PDF and follow the four prerequisites (Claude Max, Node.js, Claude Code, Obsidian), then run this one command in Terminal (Mac) or PowerShell (Windows):</p>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 8px;">Open the PDF and follow the four prerequisites (Claude Pro, Node.js, Claude Code, Obsidian), then run this one command in Terminal (Mac) or PowerShell (Windows):</p>
 <div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:10px 0;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">npx -y --package=github:blueprintit-ai/shop-os-installer shop-os-install</div>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">When the installer asks for your license key, paste this:</p>
 <div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 16px;margin:8px 0 0;font-family:Menlo,'SF Mono',monospace;font-size:13px;letter-spacing:2px;color:#0c1e2f;text-align:center;font-weight:600;">${safeKey}</div>

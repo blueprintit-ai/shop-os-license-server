@@ -90,6 +90,15 @@ function originAllowed(origin: string): boolean {
   return ALLOWED_ORIGINS.has(origin) || VERCEL_PREVIEW_RE.test(origin);
 }
 
+// Base URL for post-checkout redirects (Stripe success_url / cancel_url).
+// Mirrors the requester's origin so localhost dev, Vercel preview, and
+// production all redirect back to the same surface the buyer started on.
+// Falls back to the production site for unknown / missing origins.
+function redirectBase(req: Request): string {
+  const origin = req.headers.get("Origin") ?? "";
+  return originAllowed(origin) ? origin : "https://blueprintit.ai";
+}
+
 // Full preflight response headers (OPTIONS only).
 function corsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get("Origin") ?? "";
@@ -349,8 +358,8 @@ export default {
             priceId,
             customerEmail: body.email,
             promotionCodeId,
-            successUrl: "https://blueprintit.ai/shop-ossi/thank-you?session_id={CHECKOUT_SESSION_ID}",
-            cancelUrl: "https://blueprintit.ai/shop-ossi#purchase",
+            successUrl: `${redirectBase(req)}/shop-ossi/thank-you?session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: `${redirectBase(req)}/shop-ossi#purchase`,
             metadata: {
               source: "shop-ossi",
               ...(promoCode ? { promoCode } : {}),

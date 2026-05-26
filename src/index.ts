@@ -82,6 +82,14 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:3000", // alt dev port
 ]);
 
+// Match any Vercel preview deployment of the blueprint-it-website project.
+// Hashes change per deploy; pattern stays stable.
+const VERCEL_PREVIEW_RE = /^https:\/\/blueprint-it-website-[a-z0-9-]+\.vercel\.app$/;
+
+function originAllowed(origin: string): boolean {
+  return ALLOWED_ORIGINS.has(origin) || VERCEL_PREVIEW_RE.test(origin);
+}
+
 // Full preflight response headers (OPTIONS only).
 function corsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get("Origin") ?? "";
@@ -91,7 +99,7 @@ function corsHeaders(req: Request): HeadersInit {
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
-  if (ALLOWED_ORIGINS.has(origin)) {
+  if (originAllowed(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
   }
   return headers;
@@ -102,7 +110,7 @@ function corsHeaders(req: Request): HeadersInit {
 function corsResponseHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
   const headers: Record<string, string> = { Vary: "Origin" };
-  if (ALLOWED_ORIGINS.has(origin)) {
+  if (originAllowed(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
   }
   return headers;

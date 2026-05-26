@@ -40,4 +40,23 @@ describe("CORS", () => {
     );
     expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
+
+  it("Vercel preview deployment of this project is allowed", async () => {
+    const previewOrigin = "https://blueprint-it-website-rk5rq9b5v-blueprint-its-projects.vercel.app";
+    const res = await worker.fetch(
+      new Request("https://example.com/", { headers: { Origin: previewOrigin } }),
+      env
+    );
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(previewOrigin);
+  });
+
+  it("Unrelated *.vercel.app origin is rejected", async () => {
+    const res = await worker.fetch(
+      new Request("https://example.com/", {
+        headers: { Origin: "https://malicious-project-abc.vercel.app" },
+      }),
+      env
+    );
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
 });

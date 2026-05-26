@@ -104,10 +104,19 @@ export async function handlePaymentSuccess(
   return { license, alreadyIssued, emailResult };
 }
 
+// Cache the encoded PDF at module scope. The welcome PDF is a static asset
+// bundled with the Worker; it never changes within a deployment. Re-fetching
+// and re-encoding ~256 KB on every webhook is pure waste — Workers isolates
+// reuse module state across requests, so one fetch per isolate cold-start
+// is sufficient.
+let cachedPdfB64: string | null = null;
+
 async function loadPdfBase64(assets: Fetcher): Promise<string> {
+  if (cachedPdfB64) return cachedPdfB64;
   const resp = await assets.fetch(new Request("https://placeholder/shop-os-welcome.pdf"));
   const buf = await resp.arrayBuffer();
-  return arrayBufferToBase64(buf);
+  cachedPdfB64 = arrayBufferToBase64(buf);
+  return cachedPdfB64;
 }
 
 function arrayBufferToBase64(buf: ArrayBuffer): string {

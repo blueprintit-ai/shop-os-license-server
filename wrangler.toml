@@ -1,0 +1,19 @@
+name = "shop-os-license-server"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# KV namespace for license records.
+# After running `wrangler kv:namespace create LICENSES`, paste the id below.
+# Replace YOUR_KV_NAMESPACE_ID with the value wrangler prints.
+[[kv_namespaces]]
+binding = "LICENSES"
+id = "cfad69c7ae204758b6e68542d2d50dbd"
+
+# Secrets (set via `wrangler secret put ADMIN_TOKEN`, do NOT commit):
+# - ADMIN_TOKEN: bearer token required for /issue, /revoke, /list endpoints
+
+[vars]
+# Public env vars (safe to commit).
+SERVICE_NAME = "shop-os-license-server"
+SERVICE_VERSION = "1.0.0"

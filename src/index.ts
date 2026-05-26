@@ -301,6 +301,47 @@ export default {
         }
       }
 
+      if (req.method === "POST" && url.pathname === "/create-stripe-checkout-session") {
+        type Body = { email: string; code?: string };
+        let body: Body;
+        try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
+        if (!body.email) return json(req, { error: "Email is required." }, 400);
+
+        try {
+          const stripe = getStripe(env);
+          const priceId = env.STRIPE_PRICE_ID ?? env.STRIPE_PRICE_ID_TEST;
+          if (!priceId) return json(req, { error: "STRIPE_PRICE_ID not configured." }, 500);
+
+          let promotionCodeId: string | undefined;
+          let promoCode: string | undefined;
+          let affiliate: string | null = null;
+
+          if (body.code) {
+            const r = await validateCoupon(stripe, body.code);
+            if (!r.valid) return json(req, { error: r.error }, 400);
+            promotionCodeId = r.promotionCodeId;
+            promoCode = r.code;
+            affiliate = r.affiliate ?? null;
+          }
+
+          const session = await stripe.createCheckoutSession({
+            priceId,
+            customerEmail: body.email,
+            promotionCodeId,
+            successUrl: "https://blueprintit.ai/shop-ossi/thank-you?session_id={CHECKOUT_SESSION_ID}",
+            cancelUrl: "https://blueprintit.ai/shop-ossi#purchase",
+            metadata: {
+              source: "shop-ossi",
+              ...(promoCode ? { promoCode } : {}),
+              ...(affiliate ? { affiliate } : {}),
+            },
+          });
+          return json(req, { checkoutUrl: session.url, sessionId: session.id });
+        } catch (e) {
+          return json(req, { error: (e as Error).message }, 500);
+        }
+      }
+
       return json(req, { error: "not found", path, method }, 404);
     } catch (err) {
       return json(req, { error: "internal error", detail: String(err) }, 500);

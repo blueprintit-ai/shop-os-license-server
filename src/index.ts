@@ -20,6 +20,7 @@
  */
 
 import { ADMIN_HTML } from "./admin-html.js";
+import { LicenseRecord, IssueLicenseInput, issueLicense } from "./license-core.js";
 
 interface Env {
   LICENSES: KVNamespace;
@@ -28,19 +29,9 @@ interface Env {
   SERVICE_VERSION: string;
 }
 
-interface LicenseRecord {
-  key: string;
-  customer: string;
-  email: string;
-  product: string;
-  entitlements: string[];
-  created_at: string;
-  valid_until: string | null;
-  cancelled_at: string | null;
-  last_seen: string | null;
-  activations: number;
-}
-
+// IssueRequest is the shape of the admin POST /issue JSON body.
+// IssueLicenseInput (from license-core) is a superset; we parse into this
+// leaner type so the handler stays explicit about what the HTTP API accepts.
 interface IssueRequest {
   customer: string;
   email: string;
@@ -48,12 +39,6 @@ interface IssueRequest {
   entitlements?: string[];
   valid_until?: string | null;
 }
-
-// Crockford Base32 alphabet (no 0/O, 1/I, U).
-const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-const DEFAULT_PRODUCT = "shop-os-foundation";
-const DEFAULT_ENTITLEMENTS = ["foundation"];
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -64,18 +49,6 @@ const json = (body: unknown, status = 200): Response =>
       "cache-control": "no-store",
     },
   });
-
-function generateLicenseKey(): string {
-  // 12 random bytes => 96 bits of entropy. Encode the first 12 chars of Crockford
-  // for a SHOP-XXXX-XXXX-XXXX shape (60 bits effective; plenty for license keys).
-  const bytes = new Uint8Array(12);
-  crypto.getRandomValues(bytes);
-  let out = "";
-  for (let i = 0; i < 12; i++) {
-    out += CROCKFORD[bytes[i] % 32];
-  }
-  return `SHOP-${out.slice(0, 4)}-${out.slice(4, 8)}-${out.slice(8, 12)}`;
-}
 
 function nowISO(): string {
   return new Date().toISOString();
@@ -152,27 +125,14 @@ async function handleIssue(request: Request, env: Env): Promise<Response> {
     return json({ error: "customer and email are required" }, 400);
   }
 
-  // Generate a unique key, retrying on the (astronomical) chance of collision.
-  let key = generateLicenseKey();
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const existing = await env.LICENSES.get(key);
-    if (!existing) break;
-    key = generateLicenseKey();
-  }
-
-  const record: LicenseRecord = {
-    key,
+  const input: IssueLicenseInput = {
     customer: body.customer,
     email: body.email,
-    product: body.product ?? DEFAULT_PRODUCT,
-    entitlements: body.entitlements ?? DEFAULT_ENTITLEMENTS,
-    created_at: nowISO(),
-    valid_until: body.valid_until ?? null,
-    cancelled_at: null,
-    last_seen: null,
-    activations: 0,
+    product: body.product,
+    entitlements: body.entitlements,
+    valid_until: body.valid_until,
   };
-  await env.LICENSES.put(key, JSON.stringify(record));
+  const record = await issueLicense(env.LICENSES, input);
 
   return json({ ok: true, license: record }, 201);
 }

@@ -113,7 +113,7 @@ export class StripeClient {
 
   async retrieveCheckoutSession(sessionId: string): Promise<StripeCheckoutSession> {
     return this.call<StripeCheckoutSession>(
-      `/v1/checkout/sessions/${encodeURIComponent(sessionId)}?expand[]=discounts.0.promotion_code.coupon`,
+      `/v1/checkout/sessions/${encodeURIComponent(sessionId)}`,
     );
   }
 }

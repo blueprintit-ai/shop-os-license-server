@@ -95,7 +95,7 @@ describe("StripeClient", () => {
     await expect(c.findPromotionCode("BAD")).rejects.toThrow(/No such promotion_code/);
   });
 
-  it("retrieveCheckoutSession hits the session URL with promotion_code expansion", async () => {
+  it("retrieveCheckoutSession hits the session URL", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(makeSession()), { status: 200 }),
     );
@@ -103,8 +103,7 @@ describe("StripeClient", () => {
     const session = await c.retrieveCheckoutSession("cs_test_xyz");
 
     const url = fetchMock.mock.calls[0][0] as string;
-    expect(url).toContain("/v1/checkout/sessions/cs_test_xyz");
-    expect(url).toContain("expand[]=discounts.0.promotion_code.coupon");
+    expect(url).toBe("https://api.stripe.com/v1/checkout/sessions/cs_test_xyz");
     expect(session.payment_status).toBe("paid");
     expect(session.amount_total).toBe(50000);
     expect(session.customer_email).toBe("a@b.co");

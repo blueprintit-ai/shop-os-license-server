@@ -22,11 +22,24 @@
 import { ADMIN_HTML } from "./admin-html.js";
 import { LicenseRecord, IssueLicenseInput, issueLicense } from "./license-core.js";
 
-interface Env {
+export interface Env {
   LICENSES: KVNamespace;
   ADMIN_TOKEN: string;
   SERVICE_NAME: string;
   SERVICE_VERSION: string;
+
+  // Stripe (test mode for now; production keys added in Task 25)
+  STRIPE_SECRET_KEY_TEST?: string;
+  STRIPE_WEBHOOK_SECRET_TEST?: string;
+
+  // PayPal
+  PAYPAL_CLIENT_ID_TEST?: string;
+  PAYPAL_CLIENT_SECRET_TEST?: string;
+  PAYPAL_WEBHOOK_ID_TEST?: string;
+  PAYPAL_ENV?: string; // "sandbox" | "live"
+
+  // Resend
+  RESEND_API_KEY?: string;
 }
 
 // IssueRequest is the shape of the admin POST /issue JSON body.
@@ -40,15 +53,53 @@ interface IssueRequest {
   valid_until?: string | null;
 }
 
-const json = (body: unknown, status = 200): Response =>
-  new Response(JSON.stringify(body), {
+// ----- CORS -----
+
+const ALLOWED_ORIGINS = new Set([
+  "https://blueprintit.ai",
+  "https://www.blueprintit.ai",
+  "http://localhost:5173", // Vite dev
+  "http://localhost:3000", // alt dev port
+]);
+
+// Full preflight response headers (OPTIONS only).
+function corsHeaders(req: Request): HeadersInit {
+  const origin = req.headers.get("Origin") ?? "";
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
+  };
+  if (ALLOWED_ORIGINS.has(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
+}
+
+// Minimal CORS headers for actual (non-preflight) JSON responses.
+// Omits preflight-only fields (Allow-Methods, Allow-Headers, Max-Age).
+function corsResponseHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
+  const headers: Record<string, string> = { Vary: "Origin" };
+  if (ALLOWED_ORIGINS.has(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
+}
+
+// ----- helpers -----
+
+function json(req: Request, body: unknown, status: number = 200): Response {
+  return new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*",
       "cache-control": "no-store",
+      ...corsResponseHeaders(req),
     },
   });
+}
 
 function nowISO(): string {
   return new Date().toISOString();
@@ -59,40 +110,40 @@ function isExpired(record: LicenseRecord): boolean {
   return new Date(record.valid_until).getTime() < Date.now();
 }
 
-async function requireAdmin(request: Request, env: Env): Promise<Response | null> {
-  const auth = request.headers.get("authorization") ?? "";
+async function requireAdmin(req: Request, env: Env): Promise<Response | null> {
+  const auth = req.headers.get("authorization") ?? "";
   const expected = `Bearer ${env.ADMIN_TOKEN}`;
   if (!env.ADMIN_TOKEN) {
-    return json({ error: "server misconfigured: ADMIN_TOKEN not set" }, 500);
+    return json(req, { error: "server misconfigured: ADMIN_TOKEN not set" }, 500);
   }
   if (auth !== expected) {
-    return json({ error: "unauthorized" }, 401);
+    return json(req, { error: "unauthorized" }, 401);
   }
   return null;
 }
 
 // ----- handlers -----
 
-async function handleHealth(env: Env): Promise<Response> {
-  return json({
+async function handleHealth(req: Request, env: Env): Promise<Response> {
+  return json(req, {
     name: env.SERVICE_NAME ?? "shop-os-license-server",
     version: env.SERVICE_VERSION ?? "1.0.0",
     ok: true,
   });
 }
 
-async function handleValidate(url: URL, env: Env, bumpLastSeen: boolean): Promise<Response> {
+async function handleValidate(req: Request, url: URL, env: Env, bumpLastSeen: boolean): Promise<Response> {
   const key = url.searchParams.get("key");
-  if (!key) return json({ valid: false, error: "missing key" }, 400);
+  if (!key) return json(req, { valid: false, error: "missing key" }, 400);
 
   const record = await env.LICENSES.get<LicenseRecord>(key, "json");
-  if (!record) return json({ valid: false, error: "not found" }, 404);
+  if (!record) return json(req, { valid: false, error: "not found" }, 404);
 
   if (record.cancelled_at) {
-    return json({ valid: false, error: "revoked", cancelled_at: record.cancelled_at }, 403);
+    return json(req, { valid: false, error: "revoked", cancelled_at: record.cancelled_at }, 403);
   }
   if (isExpired(record)) {
-    return json({ valid: false, error: "expired", valid_until: record.valid_until }, 403);
+    return json(req, { valid: false, error: "expired", valid_until: record.valid_until }, 403);
   }
 
   if (bumpLastSeen) {
@@ -101,7 +152,7 @@ async function handleValidate(url: URL, env: Env, bumpLastSeen: boolean): Promis
     await env.LICENSES.put(key, JSON.stringify(record));
   }
 
-  return json({
+  return json(req, {
     valid: true,
     customer: record.customer,
     product: record.product,
@@ -111,18 +162,18 @@ async function handleValidate(url: URL, env: Env, bumpLastSeen: boolean): Promis
   });
 }
 
-async function handleIssue(request: Request, env: Env): Promise<Response> {
-  const adminCheck = await requireAdmin(request, env);
+async function handleIssue(req: Request, env: Env): Promise<Response> {
+  const adminCheck = await requireAdmin(req, env);
   if (adminCheck) return adminCheck;
 
   let body: IssueRequest;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
-    return json({ error: "invalid JSON body" }, 400);
+    return json(req, { error: "invalid JSON body" }, 400);
   }
   if (!body.customer || !body.email) {
-    return json({ error: "customer and email are required" }, 400);
+    return json(req, { error: "customer and email are required" }, 400);
   }
 
   const input: IssueLicenseInput = {
@@ -134,29 +185,29 @@ async function handleIssue(request: Request, env: Env): Promise<Response> {
   };
   const record = await issueLicense(env.LICENSES, input);
 
-  return json({ ok: true, license: record }, 201);
+  return json(req, { ok: true, license: record }, 201);
 }
 
-async function handleRevoke(request: Request, url: URL, env: Env): Promise<Response> {
-  const adminCheck = await requireAdmin(request, env);
+async function handleRevoke(req: Request, url: URL, env: Env): Promise<Response> {
+  const adminCheck = await requireAdmin(req, env);
   if (adminCheck) return adminCheck;
 
   const key = url.searchParams.get("key");
-  if (!key) return json({ error: "missing key" }, 400);
+  if (!key) return json(req, { error: "missing key" }, 400);
 
   const record = await env.LICENSES.get<LicenseRecord>(key, "json");
-  if (!record) return json({ error: "not found" }, 404);
+  if (!record) return json(req, { error: "not found" }, 404);
   if (record.cancelled_at) {
-    return json({ ok: true, already_cancelled: true, cancelled_at: record.cancelled_at });
+    return json(req, { ok: true, already_cancelled: true, cancelled_at: record.cancelled_at });
   }
 
   record.cancelled_at = nowISO();
   await env.LICENSES.put(key, JSON.stringify(record));
-  return json({ ok: true, key, cancelled_at: record.cancelled_at });
+  return json(req, { ok: true, key, cancelled_at: record.cancelled_at });
 }
 
-async function handleList(request: Request, env: Env): Promise<Response> {
-  const adminCheck = await requireAdmin(request, env);
+async function handleList(req: Request, env: Env): Promise<Response> {
+  const adminCheck = await requireAdmin(req, env);
   if (adminCheck) return adminCheck;
 
   const list = await env.LICENSES.list({ limit: 1000 });
@@ -165,32 +216,24 @@ async function handleList(request: Request, env: Env): Promise<Response> {
     const r = await env.LICENSES.get<LicenseRecord>(k.name, "json");
     if (r) records.push(r);
   }
-  return json({ ok: true, count: records.length, licenses: records });
+  return json(req, { ok: true, count: records.length, licenses: records });
 }
 
 // ----- router -----
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const url = new URL(req.url);
     const path = url.pathname;
-    const method = request.method;
+    const method = req.method;
 
     // CORS preflight
     if (method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, POST, OPTIONS",
-          "access-control-allow-headers": "authorization, content-type",
-          "access-control-max-age": "86400",
-        },
-      });
+      return new Response(null, { status: 204, headers: corsHeaders(req) });
     }
 
     try {
-      if (path === "/" && method === "GET") return handleHealth(env);
+      if (path === "/" && method === "GET") return handleHealth(req, env);
       if ((path === "/admin" || path === "/admin/") && method === "GET") {
         return new Response(ADMIN_HTML, {
           status: 200,
@@ -202,14 +245,14 @@ export default {
           },
         });
       }
-      if (path === "/validate" && method === "GET") return handleValidate(url, env, false);
-      if (path === "/refresh" && method === "GET") return handleValidate(url, env, true);
-      if (path === "/issue" && method === "POST") return handleIssue(request, env);
-      if (path === "/revoke" && method === "POST") return handleRevoke(request, url, env);
-      if (path === "/list" && method === "GET") return handleList(request, env);
-      return json({ error: "not found", path, method }, 404);
+      if (path === "/validate" && method === "GET") return handleValidate(req, url, env, false);
+      if (path === "/refresh" && method === "GET") return handleValidate(req, url, env, true);
+      if (path === "/issue" && method === "POST") return handleIssue(req, env);
+      if (path === "/revoke" && method === "POST") return handleRevoke(req, url, env);
+      if (path === "/list" && method === "GET") return handleList(req, env);
+      return json(req, { error: "not found", path, method }, 404);
     } catch (err) {
-      return json({ error: "internal error", detail: String(err) }, 500);
+      return json(req, { error: "internal error", detail: String(err) }, 500);
     }
   },
 };

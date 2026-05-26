@@ -101,14 +101,19 @@ export async function handlePaymentSuccess(
   let emailResult: { ok: boolean; error?: string } = { ok: true };
   if (!license.metadata?.welcomeEmailSentAt) {
     if (env.RESEND_API_KEY) {
-      const pdfB64 = await loadPdfBase64(env.ASSETS);
+      const [welcomeB64, firstWeekB64] = await Promise.all([
+        loadAssetBase64(env.ASSETS, "shop-os-welcome.pdf"),
+        loadAssetBase64(env.ASSETS, "shop-os-first-week-guide.pdf"),
+      ]);
       const send = await sendEmail(env.RESEND_API_KEY, {
         to: license.email,
         customerName: license.customer,
         licenseKey: license.key,
         pdfUrl: "https://shop-os-license-server.glenn-15d.workers.dev/welcome.pdf",
-        attachmentBase64: pdfB64,
-        attachmentFilename: "shop-os-welcome.pdf",
+        attachments: [
+          { filename: "shop-os-welcome.pdf", content: welcomeB64 },
+          { filename: "shop-os-first-week-guide.pdf", content: firstWeekB64 },
+        ],
       });
       if (send.error) {
         emailResult = { ok: false, error: send.error.message };
@@ -124,19 +129,20 @@ export async function handlePaymentSuccess(
   return { license, alreadyIssued, emailResult };
 }
 
-// Cache the encoded PDF at module scope. The welcome PDF is a static asset
-// bundled with the Worker; it never changes within a deployment. Re-fetching
-// and re-encoding ~256 KB on every webhook is pure waste — Workers isolates
-// reuse module state across requests, so one fetch per isolate cold-start
-// is sufficient.
-let cachedPdfB64: string | null = null;
+// Cache encoded asset bytes at module scope. The bundled PDFs never change
+// within a deployment; re-fetching and re-encoding hundreds of KB on every
+// webhook is pure waste. Workers isolates reuse module state across requests,
+// so one fetch+encode per filename per cold-start is sufficient.
+const assetB64Cache = new Map<string, string>();
 
-async function loadPdfBase64(assets: Fetcher): Promise<string> {
-  if (cachedPdfB64) return cachedPdfB64;
-  const resp = await assets.fetch(new Request("https://placeholder/shop-os-welcome.pdf"));
+async function loadAssetBase64(assets: Fetcher, filename: string): Promise<string> {
+  const cached = assetB64Cache.get(filename);
+  if (cached) return cached;
+  const resp = await assets.fetch(new Request(`https://placeholder/${filename}`));
   const buf = await resp.arrayBuffer();
-  cachedPdfB64 = arrayBufferToBase64(buf);
-  return cachedPdfB64;
+  const b64 = arrayBufferToBase64(buf);
+  assetB64Cache.set(filename, b64);
+  return b64;
 }
 
 function arrayBufferToBase64(buf: ArrayBuffer): string {

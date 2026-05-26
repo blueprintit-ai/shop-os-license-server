@@ -1,11 +1,15 @@
 import { welcomeText, welcomeHtml, welcomeSubject, WelcomeTemplateInput } from "./welcome-template";
 
+export interface ResendAttachment {
+  filename: string;
+  content: string; // base64-encoded file content
+}
+
 export interface ResendSendInput extends WelcomeTemplateInput {
   to: string;
   fromName?: string;
   fromAddress?: string;
-  attachmentBase64?: string;     // base64 PDF
-  attachmentFilename?: string;   // e.g. "shop-os-welcome.pdf"
+  attachments?: ResendAttachment[];
 }
 
 export interface ResendResponse {
@@ -29,10 +33,11 @@ export async function sendWelcomeEmail(
     text: welcomeText(input),
     reply_to: input.fromAddress ?? "glenn@blueprintit.ai",
   };
-  if (input.attachmentBase64 && input.attachmentFilename) {
-    body.attachments = [
-      { filename: input.attachmentFilename, content: input.attachmentBase64 },
-    ];
+  if (input.attachments && input.attachments.length > 0) {
+    body.attachments = input.attachments.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+    }));
   }
   const resp = await fetchImpl(RESEND_URL, {
     method: "POST",

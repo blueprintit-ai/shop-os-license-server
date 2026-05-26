@@ -63,6 +63,22 @@ describe("handlePaymentSuccess", () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 
+  it("attaches both the welcome PDF and the first-week guide PDF", async () => {
+    const kv = memoryKv();
+    const sendEmail = vi.fn().mockResolvedValue({ id: "em_dual" });
+    await handlePaymentSuccess(
+      { LICENSES: kv, RESEND_API_KEY: "re_x", ASSETS: fakeAssets() },
+      { paymentProvider: "stripe", paymentId: "cs_dual_attach", customer: "Acme", email: "a@b.co", amount: 50000 },
+      { sendEmail }
+    );
+    expect(sendEmail).toHaveBeenCalledOnce();
+    const input = sendEmail.mock.calls[0][1] as { attachments?: Array<{ filename: string }> };
+    expect(input.attachments?.map(a => a.filename)).toEqual([
+      "shop-os-welcome.pdf",
+      "shop-os-first-week-guide.pdf",
+    ]);
+  });
+
   it("records promoCode and affiliate in license metadata", async () => {
     const kv = memoryKv();
     const sendEmail = vi.fn().mockResolvedValue({ id: "em_1" });

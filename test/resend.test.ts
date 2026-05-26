@@ -30,7 +30,7 @@ describe("sendWelcomeEmail", () => {
     expect(body.attachments).toBeUndefined();
   });
 
-  it("includes attachment when base64 + filename provided", async () => {
+  it("forwards a single attachment when provided", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ id: "msg_456" }), { status: 200 })
     );
@@ -39,13 +39,36 @@ describe("sendWelcomeEmail", () => {
       customerName: "Marco",
       licenseKey: "SHOP-AAAA-BBBB-CCCC",
       pdfUrl: "https://x/welcome.pdf",
-      attachmentBase64: "JVBERi0xLjQK", // "%PDF-1.4\n" in base64
-      attachmentFilename: "shop-os-welcome.pdf",
+      attachments: [
+        { filename: "shop-os-welcome.pdf", content: "JVBERi0xLjQK" },
+      ],
     }, fetchMock as unknown as typeof fetch);
 
     const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
     expect(body.attachments).toEqual([
       { filename: "shop-os-welcome.pdf", content: "JVBERi0xLjQK" },
+    ]);
+  });
+
+  it("forwards multiple attachments in order", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "msg_multi" }), { status: 200 })
+    );
+    await sendWelcomeEmail("re_test", {
+      to: "marco@example.com",
+      customerName: "Marco",
+      licenseKey: "SHOP-AAAA-BBBB-CCCC",
+      pdfUrl: "https://x/welcome.pdf",
+      attachments: [
+        { filename: "shop-os-welcome.pdf", content: "JVBERi0xLjQK" },
+        { filename: "shop-os-first-week-guide.pdf", content: "Rmlyc3RXZWVrR3VpZGU=" },
+      ],
+    }, fetchMock as unknown as typeof fetch);
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.attachments).toEqual([
+      { filename: "shop-os-welcome.pdf", content: "JVBERi0xLjQK" },
+      { filename: "shop-os-first-week-guide.pdf", content: "Rmlyc3RXZWVrR3VpZGU=" },
     ]);
   });
 

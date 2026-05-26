@@ -28,15 +28,29 @@ export interface Env {
   SERVICE_NAME: string;
   SERVICE_VERSION: string;
 
+  // Assets binding — always present once [assets] is configured in wrangler.toml.
+  ASSETS: Fetcher;
+
   // Stripe (test mode for now; production keys added in Task 25)
   STRIPE_SECRET_KEY_TEST?: string;
   STRIPE_WEBHOOK_SECRET_TEST?: string;
+  STRIPE_PRICE_ID_TEST?: string; // public price ID used by checkout session creation (Task 12)
+
+  // Stripe production stubs (activated in Task 25 cutover)
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_ID?: string;
 
   // PayPal
   PAYPAL_CLIENT_ID_TEST?: string;
   PAYPAL_CLIENT_SECRET_TEST?: string;
   PAYPAL_WEBHOOK_ID_TEST?: string;
-  PAYPAL_ENV?: string; // "sandbox" | "live"
+  PAYPAL_ENV?: "sandbox" | "live" | string; // allow runtime values outside the union
+
+  // PayPal production stubs (activated in Task 25 cutover)
+  PAYPAL_CLIENT_ID?: string;
+  PAYPAL_CLIENT_SECRET?: string;
+  PAYPAL_WEBHOOK_ID?: string;
 
   // Resend
   RESEND_API_KEY?: string;
@@ -233,6 +247,21 @@ export default {
     }
 
     try {
+      // Serve welcome PDF from assets binding at the canonical /welcome.pdf URL.
+      if (method === "GET" && path === "/welcome.pdf") {
+        const asset = await env.ASSETS.fetch(new Request("https://placeholder/shop-os-welcome.pdf"));
+        if (!asset.ok) return new Response("Not found", { status: 404 });
+        return new Response(asset.body, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": 'inline; filename="shop-os-welcome.pdf"',
+            "Cache-Control": "public, max-age=3600",
+            ...corsResponseHeaders(req),
+          },
+        });
+      }
+
       if (path === "/" && method === "GET") return handleHealth(req, env);
       if ((path === "/admin" || path === "/admin/") && method === "GET") {
         return new Response(ADMIN_HTML, {

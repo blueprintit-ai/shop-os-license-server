@@ -17,3 +17,10 @@ id = "cfad69c7ae204758b6e68542d2d50dbd"
 # Public env vars (safe to commit).
 SERVICE_NAME = "shop-os-license-server"
 SERVICE_VERSION = "1.0.0"
+
+[assets]
+directory = "./src/assets"
+binding = "ASSETS"
+# Note: serve_directly = false is not supported in this wrangler version (3.114.17).
+# Auto-serve at /shop-os-welcome.pdf (the raw filename) is therefore also active at runtime.
+# The canonical URL advertised to customers is /welcome.pdf (programmatic route in index.ts).

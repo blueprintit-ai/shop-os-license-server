@@ -15,15 +15,26 @@ function makePromo(over: Partial<{
     id: "promo_1",
     code: over.code ?? "FOUNDING50",
     active: over.active ?? true,
-    coupon: {
-      id: "coup_1",
-      amount_off: "amount_off" in over ? over.amount_off! : 15100,
-      percent_off: over.percent_off ?? null,
-      currency: "usd",
-      duration: "once",
-      metadata: over.metadata ?? {},
-      max_redemptions: over.max_redemptions ?? 50,
-      times_redeemed: over.times_redeemed ?? 0,
+    max_redemptions: null as number | null,
+    times_redeemed: 0,
+    promotion: {
+      type: "coupon" as const,
+      coupon: {
+        id: "coup_1",
+        amount_off: "amount_off" in over ? over.amount_off! : 15100,
+        percent_off: over.percent_off ?? null,
+        currency: "usd",
+        duration: "once",
+        metadata: over.metadata ?? {},
+        max_redemptions: over.max_redemptions ?? 50,
+        times_redeemed: over.times_redeemed ?? 0,
+        valid: true,
+      },
+    },
+    restrictions: {
+      first_time_transaction: false,
+      minimum_amount: null as number | null,
+      minimum_amount_currency: null as string | null,
     },
   };
 }

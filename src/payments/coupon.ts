@@ -31,7 +31,7 @@ export async function validateCoupon(
   if (!promo) return { valid: false, error: "Code not recognized." };
   if (!promo.active) return { valid: false, error: "This code is no longer active." };
 
-  const coupon = promo.coupon;
+  const coupon = promo.promotion.coupon;
   if (coupon.max_redemptions !== null && coupon.times_redeemed >= coupon.max_redemptions) {
     const isFoundingFifty = trimmed.startsWith("FOUNDING") || coupon.metadata.campaign === "founding-50";
     return {

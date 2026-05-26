@@ -2,15 +2,27 @@ export interface StripePromotionCode {
   id: string;
   code: string;
   active: boolean;
-  coupon: {
-    id: string;
-    amount_off: number | null;       // cents
-    percent_off: number | null;
-    currency: string | null;
-    duration: string;
-    metadata: Record<string, string>;
-    max_redemptions: number | null;
-    times_redeemed: number;
+  max_redemptions: number | null;   // on the promo itself, usually null
+  times_redeemed: number;
+  promotion: {
+    type: "coupon";
+    coupon: {
+      id: string;
+      amount_off: number | null;     // cents
+      percent_off: number | null;
+      currency: string | null;
+      duration: string;
+      metadata: Record<string, string>;
+      max_redemptions: number | null;
+      times_redeemed: number;
+      valid: boolean;
+      name?: string;
+    };
+  };
+  restrictions?: {
+    first_time_transaction: boolean;
+    minimum_amount: number | null;
+    minimum_amount_currency: string | null;
   };
 }
 
@@ -68,7 +80,7 @@ export class StripeClient {
   // Returns null if not found / not active.
   async findPromotionCode(code: string): Promise<StripePromotionCode | null> {
     const data = await this.call<{ data: StripePromotionCode[] }>(
-      `/v1/promotion_codes?code=${encodeURIComponent(code)}&active=true&limit=1&expand[]=data.coupon`,
+      `/v1/promotion_codes?code=${encodeURIComponent(code)}&active=true&limit=1&expand[]=data.promotion.coupon`,
     );
     return data.data[0] ?? null;
   }

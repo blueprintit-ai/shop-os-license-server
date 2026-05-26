@@ -23,6 +23,7 @@ import { ADMIN_HTML } from "./admin-html.js";
 import { LicenseRecord, IssueLicenseInput, issueLicense } from "./license-core.js";
 import { StripeClient } from "./payments/stripe.js";
 import { validateCoupon } from "./payments/coupon.js";
+import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
 
 export interface Env {
   LICENSES: KVNamespace;
@@ -340,6 +341,10 @@ export default {
         } catch (e) {
           return json(req, { error: (e as Error).message }, 500);
         }
+      }
+
+      if (req.method === "POST" && url.pathname === "/webhook/stripe") {
+        return handleStripeWebhook(req, env);
       }
 
       return json(req, { error: "not found", path, method }, 404);

@@ -22,8 +22,11 @@
 import { ADMIN_HTML } from "./admin-html.js";
 import { LicenseRecord, IssueLicenseInput, issueLicense } from "./license-core.js";
 import { StripeClient } from "./payments/stripe.js";
+import { PayPalClient } from "./payments/paypal.js";
 import { validateCoupon } from "./payments/coupon.js";
 import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
+import { handlePayPalWebhook } from "./handlers/paypal-webhook.js";
+import { handlePaymentSuccess } from "./handlers/payment-success.js";
 
 export interface Env {
   LICENSES: KVNamespace;
@@ -143,6 +146,14 @@ function getStripe(env: Env): StripeClient {
   const key = env.STRIPE_SECRET_KEY ?? env.STRIPE_SECRET_KEY_TEST;
   if (!key) throw new Error("No Stripe secret key configured.");
   return new StripeClient(key);
+}
+
+function getPayPal(env: Env): PayPalClient {
+  const envType = (env.PAYPAL_ENV ?? "sandbox") as "sandbox" | "live";
+  const cid = env.PAYPAL_CLIENT_ID ?? env.PAYPAL_CLIENT_ID_TEST;
+  const sec = env.PAYPAL_CLIENT_SECRET ?? env.PAYPAL_CLIENT_SECRET_TEST;
+  if (!cid || !sec) throw new Error("PayPal credentials not configured.");
+  return new PayPalClient(envType, cid, sec);
 }
 
 // ----- handlers -----
@@ -345,6 +356,108 @@ export default {
 
       if (req.method === "POST" && url.pathname === "/webhook/stripe") {
         return handleStripeWebhook(req, env);
+      }
+
+      if (req.method === "POST" && url.pathname === "/create-paypal-order") {
+        type Body = { email: string; code?: string };
+        let body: Body;
+        try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
+        if (!body.email) return json(req, { error: "Email is required." }, 400);
+
+        try {
+          let finalPrice = 50000;
+          let promoCode: string | undefined;
+          let affiliate: string | null = null;
+          let discountAmount: number | undefined;
+
+          if (body.code) {
+            const stripe = getStripe(env);
+            const r = await validateCoupon(stripe, body.code);
+            if (!r.valid) return json(req, { error: r.error }, 400);
+            finalPrice = r.finalPrice ?? 50000;
+            promoCode = r.code;
+            affiliate = r.affiliate ?? null;
+            discountAmount = r.discountAmount;
+          }
+
+          const paypal = getPayPal(env);
+          const order = await paypal.createOrder({
+            amount: finalPrice,
+            payerEmail: body.email,
+            metadata: {
+              source: "shop-ossi",
+              email: body.email,
+              ...(promoCode ? { promoCode } : {}),
+              ...(affiliate ? { affiliate } : {}),
+              ...(discountAmount ? { discountAmount: String(discountAmount) } : {}),
+            },
+          });
+          return json(req, { orderId: order.id });
+        } catch (e) {
+          return json(req, { error: (e as Error).message }, 500);
+        }
+      }
+
+      if (req.method === "POST" && url.pathname === "/capture-paypal-order") {
+        type Body = { orderId: string; email?: string };
+        let body: Body;
+        try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
+        if (!body.orderId) return json(req, { error: "orderId is required." }, 400);
+
+        try {
+          const paypal = getPayPal(env);
+          const captured = await paypal.captureOrder(body.orderId);
+          if (captured.status !== "COMPLETED") {
+            return json(req, { error: `Capture status: ${captured.status}` }, 400);
+          }
+
+          const customId = captured.purchase_units?.[0]?.custom_id ?? "{}";
+          let metadata: Record<string, string> = {};
+          try { metadata = JSON.parse(customId); } catch { metadata = {}; }
+
+          const email = body.email ?? metadata.email ?? captured.payer?.email_address ?? "";
+          const customer =
+            `${captured.payer?.name?.given_name ?? ""} ${captured.payer?.name?.surname ?? ""}`.trim() ||
+            metadata.email ||
+            email ||
+            "Customer";
+
+          const amountValue = captured.purchase_units?.[0]?.amount?.value;
+          const amountCents = amountValue ? Math.round(parseFloat(amountValue) * 100) : 50000;
+
+          const result = await handlePaymentSuccess(env, {
+            paymentProvider: "paypal",
+            paymentId: body.orderId,
+            customer,
+            email,
+            amount: amountCents,
+            promoCode: metadata.promoCode,
+            affiliate: metadata.affiliate ?? null,
+            discountAmount: metadata.discountAmount ? parseInt(metadata.discountAmount, 10) : undefined,
+          });
+
+          return json(req, { license: result.license.key, alreadyIssued: result.alreadyIssued });
+        } catch (e) {
+          return json(req, { error: (e as Error).message }, 500);
+        }
+      }
+
+      if (req.method === "POST" && url.pathname === "/webhook/paypal") {
+        return handlePayPalWebhook(req, env);
+      }
+
+      if (req.method === "GET" && url.pathname === "/payment-status") {
+        const sessionId = url.searchParams.get("session_id");
+        const paypalOrderId = url.searchParams.get("paypal_order_id");
+        if (!sessionId && !paypalOrderId) {
+          return json(req, { error: "Provide session_id or paypal_order_id." }, 400);
+        }
+        const idemKey = sessionId
+          ? `payment:stripe:${sessionId}`
+          : `payment:paypal:${paypalOrderId}`;
+        const licenseKey = await env.LICENSES.get(idemKey);
+        if (!licenseKey) return json(req, { status: "pending" });
+        return json(req, { status: "succeeded", licenseKey });
       }
 
       return json(req, { error: "not found", path, method }, 404);

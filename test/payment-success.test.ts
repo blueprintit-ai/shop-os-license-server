@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { handlePaymentSuccess } from "../src/handlers/payment-success";
+import { handlePaymentSuccess, deriveFlagsFromPromo } from "../src/handlers/payment-success";
 import { LicenseRecord } from "../src/license-core";
 
 function memoryKv() {
@@ -88,6 +88,37 @@ describe("handlePaymentSuccess", () => {
     expect(second.alreadyIssued).toBe(true);
     expect(second.license.key).not.toBe(first.license.key); // new key issued
     expect(await kv.get("payment:stripe:cs_orphan")).toBe(second.license.key); // mapping updated
+  });
+
+  it("auto-flags FOUNDING50 redeemers with lifetimeUpdates + cohort='founding-50'", async () => {
+    const kv = memoryKv();
+    const sendEmail = vi.fn().mockResolvedValue({ id: "em_1" });
+    const r = await handlePaymentSuccess(
+      { LICENSES: kv, RESEND_API_KEY: "re_x", ASSETS: fakeAssets() },
+      { paymentProvider: "stripe", paymentId: "cs_founding", customer: "F", email: "f@x.y", amount: 50000, promoCode: "FOUNDING50" },
+      { sendEmail }
+    );
+    expect(r.license.lifetimeUpdates).toBe(true);
+    expect(r.license.cohort).toBe("founding-50");
+  });
+
+  it("does not auto-flag non-FOUNDING50 promos (e.g. INSIDER100)", async () => {
+    const kv = memoryKv();
+    const sendEmail = vi.fn().mockResolvedValue({ id: "em_1" });
+    const r = await handlePaymentSuccess(
+      { LICENSES: kv, RESEND_API_KEY: "re_x", ASSETS: fakeAssets() },
+      { paymentProvider: "stripe", paymentId: "cs_insider", customer: "I", email: "i@x.y", amount: 0, promoCode: "INSIDER100" },
+      { sendEmail }
+    );
+    expect(r.license.lifetimeUpdates).toBe(false);
+    expect(r.license.cohort).toBe("");
+  });
+
+  it("deriveFlagsFromPromo is case-insensitive on FOUNDING50", () => {
+    expect(deriveFlagsFromPromo("founding50").lifetimeUpdates).toBe(true);
+    expect(deriveFlagsFromPromo("FoUnDiNg50").lifetimeUpdates).toBe(true);
+    expect(deriveFlagsFromPromo(undefined).lifetimeUpdates).toBe(false);
+    expect(deriveFlagsFromPromo("").lifetimeUpdates).toBe(false);
   });
 
   it("does not mark welcomeEmailSentAt when email fails", async () => {

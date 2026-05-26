@@ -159,7 +159,8 @@ export const ADMIN_HTML = `<!DOCTYPE html>
     th:nth-child(3), td:nth-child(3),
     th:nth-child(6), td:nth-child(6),
     th:nth-child(7), td:nth-child(7),
-    th:nth-child(8), td:nth-child(8) { display: none; }
+    th:nth-child(8), td:nth-child(8),
+    th:nth-child(9), td:nth-child(9) { display: none; }
   }
 </style>
 </head>
@@ -193,6 +194,12 @@ export const ADMIN_HTML = `<!DOCTYPE html>
         <option value="active">Active only</option>
         <option value="revoked">Revoked only</option>
       </select>
+      <select id="filter-cohort">
+        <option value="all">All cohorts</option>
+        <option value="lifetime">Lifetime updates</option>
+        <option value="founding-50">Founding 50</option>
+        <option value="none">No cohort</option>
+      </select>
     </div>
     <div class="table-wrap">
       <table>
@@ -201,7 +208,8 @@ export const ADMIN_HTML = `<!DOCTYPE html>
             <th>Key</th>
             <th>Customer</th>
             <th>Email</th>
-            <th>Product</th>
+            <th>Cohort</th>
+            <th>Lifetime</th>
             <th>Entitlements</th>
             <th>Created</th>
             <th>Last seen</th>
@@ -226,6 +234,11 @@ export const ADMIN_HTML = `<!DOCTYPE html>
       <label><span>Product</span><input name="product" value="shop-os-foundation"></label>
       <label><span>Entitlements (comma separated)</span><input name="entitlements" value="foundation"></label>
       <label><span>Valid until (ISO date, leave blank for perpetual)</span><input name="valid_until" placeholder="e.g. 2027-05-24T00:00:00.000Z"></label>
+      <label style="flex-direction:row;align-items:center;gap:10px;">
+        <input type="checkbox" name="lifetimeUpdates" style="width:auto;">
+        <span>Lifetime updates (grants Founding 50 benefits)</span>
+      </label>
+      <label><span>Cohort tag (optional)</span><input name="cohort" placeholder="e.g. partner, beta"></label>
       <div id="issue-error" class="error" hidden></div>
     </div>
     <div class="foot">
@@ -247,6 +260,25 @@ export const ADMIN_HTML = `<!DOCTYPE html>
   <div class="foot">
     <button type="button" id="key-dialog-close" class="primary">Done</button>
   </div>
+</dialog>
+
+<dialog id="edit-dialog">
+  <form id="edit-form">
+    <div class="head"><h2>Edit license</h2></div>
+    <div class="body">
+      <p class="muted" style="margin-bottom:10px;">License <strong id="edit-key"></strong></p>
+      <label style="flex-direction:row;align-items:center;gap:10px;">
+        <input type="checkbox" name="lifetimeUpdates" style="width:auto;">
+        <span>Lifetime updates (Founding 50 benefits)</span>
+      </label>
+      <label><span>Cohort tag (free text — e.g. "founding-50", "partner", "beta")</span><input name="cohort" placeholder=""></label>
+      <div id="edit-error" class="error" hidden></div>
+    </div>
+    <div class="foot">
+      <button type="button" value="cancel">Cancel</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="revoke-dialog">
@@ -331,12 +363,16 @@ function statusOf(lic) {
 function render() {
   const q = $("#search").value.trim().toLowerCase();
   const filter = $("#filter-status").value;
+  const cohortFilter = $("#filter-cohort").value;
   const list = STATE.licenses.filter(l => {
     const s = statusOf(l);
     if (filter === "active" && s !== "active") return false;
     if (filter === "revoked" && s !== "revoked") return false;
+    if (cohortFilter === "lifetime" && !l.lifetimeUpdates) return false;
+    if (cohortFilter === "founding-50" && (l.cohort || "") !== "founding-50") return false;
+    if (cohortFilter === "none" && (l.cohort || "")) return false;
     if (!q) return true;
-    return (l.key + " " + (l.customer || "") + " " + (l.email || "")).toLowerCase().includes(q);
+    return (l.key + " " + (l.customer || "") + " " + (l.email || "") + " " + (l.cohort || "")).toLowerCase().includes(q);
   });
 
   // sort: active first, then by created_at desc
@@ -350,13 +386,14 @@ function render() {
   // stats
   const active = STATE.licenses.filter(l => statusOf(l) === "active").length;
   const revoked = STATE.licenses.filter(l => statusOf(l) === "revoked").length;
-  const monthAgo = Date.now() - 30 * 86400 * 1000;
-  const recent = STATE.licenses.filter(l => l.created_at && new Date(l.created_at).getTime() > monthAgo).length;
+  const founding = STATE.licenses.filter(l => (l.cohort || "") === "founding-50").length;
+  const lifetime = STATE.licenses.filter(l => !!l.lifetimeUpdates).length;
   $("#stats").innerHTML = [
     \`<div class="stat-card"><div class="label">Total</div><div class="value">\${STATE.licenses.length}</div></div>\`,
     \`<div class="stat-card"><div class="label">Active</div><div class="value">\${active}</div></div>\`,
     \`<div class="stat-card"><div class="label">Revoked</div><div class="value">\${revoked}</div></div>\`,
-    \`<div class="stat-card"><div class="label">Issued (30d)</div><div class="value">\${recent}</div></div>\`,
+    \`<div class="stat-card"><div class="label">Founding 50</div><div class="value">\${founding} / 50</div></div>\`,
+    \`<div class="stat-card"><div class="label">Lifetime updates</div><div class="value">\${lifetime}</div></div>\`,
   ].join("");
 
   const tbody = $("#tbody");
@@ -370,20 +407,29 @@ function render() {
     const s = statusOf(l);
     const ents = (l.entitlements || []).map(e => \`<span class="pill entitlement">\${escapeHtml(e)}</span>\`).join("");
     const isActive = s === "active";
+    const cohort = l.cohort || "";
+    const cohortCell = cohort
+      ? \`<span class="pill \${cohort === "founding-50" ? "status-active" : "entitlement"}">\${escapeHtml(cohort)}</span>\`
+      : \`<span class="muted">—</span>\`;
+    const lifetimeCell = l.lifetimeUpdates
+      ? \`<span class="pill status-active">yes</span>\`
+      : \`<span class="muted">—</span>\`;
     const revokeBtn = isActive
       ? \`<button class="danger" data-action="revoke" data-key="\${l.key}">Revoke</button>\`
       : "";
+    const editBtn = \`<button class="ghost" data-action="edit" data-key="\${l.key}">Edit</button>\`;
     return \`<tr>
       <td><span class="key" data-key="\${l.key}" title="Click to copy">\${l.key}</span></td>
       <td><strong>\${escapeHtml(l.customer || "")}</strong></td>
       <td class="muted">\${escapeHtml(l.email || "")}</td>
-      <td><span class="pill product">\${escapeHtml(l.product || "")}</span></td>
+      <td>\${cohortCell}</td>
+      <td>\${lifetimeCell}</td>
       <td>\${ents}</td>
       <td class="muted">\${fmtDate(l.created_at)}</td>
       <td class="muted">\${fmtDate(l.last_seen)}</td>
       <td class="muted">\${l.activations || 0}</td>
       <td><span class="pill status-\${s}">\${s}</span></td>
-      <td class="row-actions">\${revokeBtn}</td>
+      <td class="row-actions">\${editBtn} \${revokeBtn}</td>
     </tr>\`;
   }).join("");
 }
@@ -415,6 +461,7 @@ $("#signout-btn").addEventListener("click", () => {
 $("#refresh-btn").addEventListener("click", refresh);
 $("#search").addEventListener("input", render);
 $("#filter-status").addEventListener("change", render);
+$("#filter-cohort").addEventListener("change", render);
 
 $("#tbody").addEventListener("click", (e) => {
   const keyEl = e.target.closest(".key");
@@ -429,6 +476,16 @@ $("#tbody").addEventListener("click", (e) => {
     $("#revoke-key").textContent = key;
     $("#revoke-confirm").dataset.key = key;
     $("#revoke-dialog").showModal();
+  } else if (action === "edit") {
+    const key = e.target.dataset.key;
+    const lic = STATE.licenses.find(l => l.key === key);
+    if (!lic) return;
+    $("#edit-key").textContent = key;
+    $("#edit-form").querySelector("[name=lifetimeUpdates]").checked = !!lic.lifetimeUpdates;
+    $("#edit-form").querySelector("[name=cohort]").value = lic.cohort || "";
+    $("#edit-form").dataset.key = key;
+    $("#edit-error").hidden = true;
+    $("#edit-dialog").showModal();
   }
 });
 
@@ -461,6 +518,8 @@ $("#issue-form").addEventListener("submit", async (e) => {
     email: fd.get("email").trim(),
     product: (fd.get("product") || "").trim() || "shop-os-foundation",
     entitlements: (fd.get("entitlements") || "").split(",").map(s => s.trim()).filter(Boolean),
+    lifetimeUpdates: fd.get("lifetimeUpdates") === "on",
+    cohort: (fd.get("cohort") || "").trim(),
   };
   const validUntil = (fd.get("valid_until") || "").trim();
   if (validUntil) body.valid_until = validUntil;
@@ -474,6 +533,26 @@ $("#issue-form").addEventListener("submit", async (e) => {
   }
   $("#issue-dialog").close();
   showNewKey(r.body.license);
+  refresh();
+});
+
+$("#edit-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const key = $("#edit-form").dataset.key;
+  const fd = new FormData(e.target);
+  const body = {
+    lifetimeUpdates: fd.get("lifetimeUpdates") === "on",
+    cohort: (fd.get("cohort") || "").trim(),
+  };
+  const r = await api("/update-license?key=" + encodeURIComponent(key), { method: "POST", body });
+  if (!r.ok) {
+    const err = $("#edit-error");
+    err.textContent = "Save failed: " + (r.body.error || r.status);
+    err.hidden = false;
+    return;
+  }
+  $("#edit-dialog").close();
+  toast("Updated " + key);
   refresh();
 });
 

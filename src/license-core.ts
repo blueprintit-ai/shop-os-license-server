@@ -24,6 +24,13 @@ export interface LicenseRecord {
   cancelled_at: string | null;
   last_seen: string | null;
   activations: number;
+  // Lifetime-updates entitlement (gate for future free Founding 50 benefits).
+  // Auto-set true when promoCode === "FOUNDING50" (see stripe/paypal webhooks);
+  // can also be granted manually via the admin PATCH route.
+  lifetimeUpdates: boolean;
+  // Display tag for the entitlement source. "founding-50" set automatically at
+  // FOUNDING50 redemption; admin can set free-text values (e.g. "partner", "beta").
+  cohort: string;
   metadata?: {
     paymentProvider?: "stripe" | "paypal";
     paymentId?: string;
@@ -41,6 +48,8 @@ export interface IssueLicenseInput {
   product?: string;
   entitlements?: string[];
   valid_until?: string | null;
+  lifetimeUpdates?: boolean;
+  cohort?: string;
   metadata?: LicenseRecord["metadata"];
 }
 
@@ -75,6 +84,8 @@ export function buildLicenseRecord(input: IssueLicenseInput): LicenseRecord {
     cancelled_at: null,
     last_seen: null,
     activations: 0,
+    lifetimeUpdates: input.lifetimeUpdates ?? false,
+    cohort: input.cohort ?? "",
     metadata: input.metadata,
   };
 }
@@ -127,4 +138,26 @@ export async function markEmailSent(
     welcomeEmailSentAt: new Date().toISOString(),
   };
   await kv.put(licenseKey, JSON.stringify(rec));
+}
+
+/**
+ * Patch `lifetimeUpdates` and/or `cohort` on an existing license.
+ * Returns the updated record, or null if the key is not found.
+ * Undefined patch fields are left untouched.
+ */
+export async function updateLicenseFlags(
+  kv: KVNamespace,
+  licenseKey: string,
+  patch: { lifetimeUpdates?: boolean; cohort?: string }
+): Promise<LicenseRecord | null> {
+  const raw = await kv.get(licenseKey);
+  if (!raw) return null;
+  const rec = JSON.parse(raw) as LicenseRecord;
+  if (patch.lifetimeUpdates !== undefined) rec.lifetimeUpdates = patch.lifetimeUpdates;
+  if (patch.cohort !== undefined) rec.cohort = patch.cohort;
+  // Backfill defaults for older records that predate these fields.
+  if (rec.lifetimeUpdates === undefined) rec.lifetimeUpdates = false;
+  if (rec.cohort === undefined) rec.cohort = "";
+  await kv.put(licenseKey, JSON.stringify(rec));
+  return rec;
 }

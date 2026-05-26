@@ -12,6 +12,20 @@ export interface PaymentSuccessInput {
   discountAmount?: number;  // cents
 }
 
+// Promo codes that automatically grant lifetime-updates entitlement.
+// FOUNDING50 is the live Founding 50 cohort coupon. Add future codes here
+// only if their redeemers should also inherit the "lifetime updates" benefit.
+const LIFETIME_PROMO_CODES = new Set(["FOUNDING50"]);
+
+export function deriveFlagsFromPromo(
+  promoCode: string | undefined
+): { lifetimeUpdates: boolean; cohort: string } {
+  if (promoCode && LIFETIME_PROMO_CODES.has(promoCode.toUpperCase())) {
+    return { lifetimeUpdates: true, cohort: "founding-50" };
+  }
+  return { lifetimeUpdates: false, cohort: "" };
+}
+
 export interface PaymentSuccessResult {
   license: LicenseRecord;
   alreadyIssued: boolean;
@@ -45,9 +59,12 @@ export async function handlePaymentSuccess(
     const raw = await env.LICENSES.get(existingKey);
     if (!raw) {
       // Edge case: idempotency record exists but license is gone (deleted manually?). Re-issue.
+      const flags = deriveFlagsFromPromo(input.promoCode);
       license = await issueLicense(env.LICENSES, {
         customer: input.customer,
         email: input.email,
+        lifetimeUpdates: flags.lifetimeUpdates,
+        cohort: flags.cohort,
         metadata: {
           paymentProvider: input.paymentProvider,
           paymentId: input.paymentId,
@@ -62,9 +79,12 @@ export async function handlePaymentSuccess(
       license = JSON.parse(raw) as LicenseRecord;
     }
   } else {
+    const flags = deriveFlagsFromPromo(input.promoCode);
     license = await issueLicense(env.LICENSES, {
       customer: input.customer,
       email: input.email,
+      lifetimeUpdates: flags.lifetimeUpdates,
+      cohort: flags.cohort,
       metadata: {
         paymentProvider: input.paymentProvider,
         paymentId: input.paymentId,

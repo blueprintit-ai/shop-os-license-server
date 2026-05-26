@@ -8,6 +8,7 @@
  *   GET  /refresh?key=...        -> re-validate, bump last_seen (public, used by skills periodically)
  *   POST /issue                  -> issue a new license key (admin: requires bearer ADMIN_TOKEN)
  *   POST /revoke?key=...         -> revoke a license key (admin)
+ *   POST /update-license?key=... -> patch lifetimeUpdates / cohort flags (admin)
  *   GET  /list                   -> list all licenses (admin)
  *
  * Data lives in the LICENSES KV namespace, keyed by license-key string.
@@ -20,7 +21,7 @@
  */
 
 import { ADMIN_HTML } from "./admin-html.js";
-import { LicenseRecord, IssueLicenseInput, issueLicense } from "./license-core.js";
+import { LicenseRecord, IssueLicenseInput, issueLicense, updateLicenseFlags } from "./license-core.js";
 import { StripeClient } from "./payments/stripe.js";
 import { PayPalClient } from "./payments/paypal.js";
 import { validateCoupon } from "./payments/coupon.js";
@@ -71,6 +72,8 @@ interface IssueRequest {
   product?: string;
   entitlements?: string[];
   valid_until?: string | null;
+  lifetimeUpdates?: boolean;
+  cohort?: string;
 }
 
 // ----- CORS -----
@@ -233,10 +236,38 @@ async function handleIssue(req: Request, env: Env): Promise<Response> {
     product: body.product,
     entitlements: body.entitlements,
     valid_until: body.valid_until,
+    lifetimeUpdates: body.lifetimeUpdates,
+    cohort: body.cohort,
   };
   const record = await issueLicense(env.LICENSES, input);
 
   return json(req, { ok: true, license: record }, 201);
+}
+
+async function handleUpdateLicense(req: Request, url: URL, env: Env): Promise<Response> {
+  const adminCheck = await requireAdmin(req, env);
+  if (adminCheck) return adminCheck;
+
+  const key = url.searchParams.get("key");
+  if (!key) return json(req, { error: "missing key" }, 400);
+
+  let body: { lifetimeUpdates?: boolean; cohort?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return json(req, { error: "invalid JSON body" }, 400);
+  }
+
+  const patch: { lifetimeUpdates?: boolean; cohort?: string } = {};
+  if (typeof body.lifetimeUpdates === "boolean") patch.lifetimeUpdates = body.lifetimeUpdates;
+  if (typeof body.cohort === "string") patch.cohort = body.cohort.trim();
+  if (Object.keys(patch).length === 0) {
+    return json(req, { error: "no updatable fields provided" }, 400);
+  }
+
+  const updated = await updateLicenseFlags(env.LICENSES, key, patch);
+  if (!updated) return json(req, { error: "not found" }, 404);
+  return json(req, { ok: true, license: updated });
 }
 
 async function handleRevoke(req: Request, url: URL, env: Env): Promise<Response> {
@@ -316,6 +347,7 @@ export default {
       if (path === "/refresh" && method === "GET") return handleValidate(req, url, env, true);
       if (path === "/issue" && method === "POST") return handleIssue(req, env);
       if (path === "/revoke" && method === "POST") return handleRevoke(req, url, env);
+      if (path === "/update-license" && method === "POST") return handleUpdateLicense(req, url, env);
       if (path === "/list" && method === "GET") return handleList(req, env);
 
       if (req.method === "POST" && url.pathname === "/validate-coupon") {

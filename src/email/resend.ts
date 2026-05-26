@@ -18,7 +18,7 @@ const RESEND_URL = "https://api.resend.com/emails";
 export async function sendWelcomeEmail(
   apiKey: string,
   input: ResendSendInput,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = (input, init) => fetch(input, init),
 ): Promise<ResendResponse> {
   const from = `${input.fromName ?? "Glenn Chua"} <${input.fromAddress ?? "glenn@blueprintit.ai"}>`;
   const body: Record<string, unknown> = {

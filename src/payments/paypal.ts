@@ -35,7 +35,7 @@ export class PayPalClient {
     // Dependency-injected fetch; defaults to the global fetch. Allows unit tests
     // to pass a vi.fn() mock without touching the non-configurable Workers-runtime
     // globalThis.fetch (which cannot be spied on via vi.spyOn in the workers pool).
-    private fetchImpl: typeof fetch = fetch,
+    private fetchImpl: typeof fetch = (input, init) => fetch(input, init),
   ) {
     this.base = BASES[env];
   }

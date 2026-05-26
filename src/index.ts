@@ -21,6 +21,8 @@
 
 import { ADMIN_HTML } from "./admin-html.js";
 import { LicenseRecord, IssueLicenseInput, issueLicense } from "./license-core.js";
+import { StripeClient } from "./payments/stripe.js";
+import { validateCoupon } from "./payments/coupon.js";
 
 export interface Env {
   LICENSES: KVNamespace;
@@ -134,6 +136,12 @@ async function requireAdmin(req: Request, env: Env): Promise<Response | null> {
     return json(req, { error: "unauthorized" }, 401);
   }
   return null;
+}
+
+function getStripe(env: Env): StripeClient {
+  const key = env.STRIPE_SECRET_KEY ?? env.STRIPE_SECRET_KEY_TEST;
+  if (!key) throw new Error("No Stripe secret key configured.");
+  return new StripeClient(key);
 }
 
 // ----- handlers -----
@@ -279,6 +287,20 @@ export default {
       if (path === "/issue" && method === "POST") return handleIssue(req, env);
       if (path === "/revoke" && method === "POST") return handleRevoke(req, url, env);
       if (path === "/list" && method === "GET") return handleList(req, env);
+
+      if (req.method === "POST" && url.pathname === "/validate-coupon") {
+        let body: { code?: string };
+        try { body = await req.json(); } catch { body = {}; }
+        if (!body.code) return json(req, { valid: false, error: "Code is required." }, 400);
+        try {
+          const stripe = getStripe(env);
+          const result = await validateCoupon(stripe, body.code);
+          return json(req, result);
+        } catch (e) {
+          return json(req, { valid: false, error: (e as Error).message }, 500);
+        }
+      }
+
       return json(req, { error: "not found", path, method }, 404);
     } catch (err) {
       return json(req, { error: "internal error", detail: String(err) }, 500);

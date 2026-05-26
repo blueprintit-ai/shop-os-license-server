@@ -53,7 +53,7 @@ export async function handlePayPalWebhook(
 
   const amountCents = capture.amount?.value
     ? Math.round(parseFloat(capture.amount.value) * 100)
-    : 50000;
+    : 75000;
 
   await handlePaymentSuccess(env, {
     paymentProvider: "paypal",

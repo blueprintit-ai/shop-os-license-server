@@ -21,7 +21,7 @@ function makePromo(over: Partial<{
       type: "coupon" as const,
       coupon: {
         id: "coup_1",
-        amount_off: "amount_off" in over ? over.amount_off! : 15100,
+        amount_off: "amount_off" in over ? over.amount_off! : 25000,
         percent_off: over.percent_off ?? null,
         currency: "usd",
         duration: "once",
@@ -58,14 +58,14 @@ describe("validateCoupon", () => {
     expect(r.error).toMatch(/not recognized/i);
   });
 
-  it("accepts FOUNDING50 with $151 off, finalPrice 349.00", async () => {
-    const r = await validateCoupon(stripeMock(makePromo({ amount_off: 15100 })), "founding50");
+  it("accepts FOUNDING50 with $250 off, finalPrice 500.00", async () => {
+    const r = await validateCoupon(stripeMock(makePromo({ amount_off: 25000 })), "founding50");
     expect(r.valid).toBe(true);
     expect(r.code).toBe("FOUNDING50");
-    expect(r.finalPrice).toBe(34900);
-    expect(r.discountAmount).toBe(15100);
+    expect(r.finalPrice).toBe(50000);
+    expect(r.discountAmount).toBe(25000);
     expect(r.label).toMatch(/FOUNDING50/);
-    expect(r.label).toMatch(/151\.00/);
+    expect(r.label).toMatch(/250\.00/);
   });
 
   it("rejects when max_redemptions reached, with sold-out message for FOUNDING", async () => {
@@ -78,7 +78,7 @@ describe("validateCoupon", () => {
     const r = await validateCoupon(stripeMock(makePromo({ amount_off: null, percent_off: 100 })), "INSIDER1");
     expect(r.valid).toBe(true);
     expect(r.finalPrice).toBe(0);
-    expect(r.discountAmount).toBe(50000);
+    expect(r.discountAmount).toBe(75000);
   });
 
   it("returns affiliate from coupon metadata", async () => {

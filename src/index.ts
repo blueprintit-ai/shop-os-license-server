@@ -383,7 +383,7 @@ export default {
         if (!body.email) return json(req, { error: "Email is required." }, 400);
 
         try {
-          let finalPrice = 50000;
+          let finalPrice = 75000;
           let promoCode: string | undefined;
           let affiliate: string | null = null;
           let discountAmount: number | undefined;
@@ -392,7 +392,7 @@ export default {
             const stripe = getStripe(env);
             const r = await validateCoupon(stripe, body.code);
             if (!r.valid) return json(req, { error: r.error }, 400);
-            finalPrice = r.finalPrice ?? 50000;
+            finalPrice = r.finalPrice ?? 75000;
             promoCode = r.code;
             affiliate = r.affiliate ?? null;
             discountAmount = r.discountAmount;
@@ -441,7 +441,7 @@ export default {
             "Customer";
 
           const amountValue = captured.purchase_units?.[0]?.amount?.value;
-          const amountCents = amountValue ? Math.round(parseFloat(amountValue) * 100) : 50000;
+          const amountCents = amountValue ? Math.round(parseFloat(amountValue) * 100) : 75000;
 
           const result = await handlePaymentSuccess(env, {
             paymentProvider: "paypal",

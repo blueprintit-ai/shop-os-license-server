@@ -8,6 +8,7 @@ Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "This script will install:"
 Write-Host "  • Node.js"
+Write-Host "  • Git"
 Write-Host "  • Claude Code"
 Write-Host "  • Obsidian"
 Write-Host "  • Shop OS Vault + Installer"
@@ -47,6 +48,19 @@ if (Check-Command node) {
 } else {
   Write-Host "📦 Installing Node.js via WinGet..." -ForegroundColor Yellow
   & winget install --id OpenJS.NodeJS --scope user --silent --accept-package-agreements --accept-source-agreements
+}
+
+# 2b. Check/install Git
+# The Shop OS npx installer uses git to refresh the plugin marketplace clone
+# (~/.claude/plugins/marketplaces/blueprint-skills). Without git on PATH the
+# refresh silently fails and the customer ends up with no plugins. Trivial to
+# pre-install here.
+Write-Host ""
+if (Check-Command git) {
+  Write-Host "✓ Git found" -ForegroundColor Green
+} else {
+  Write-Host "📦 Installing Git via WinGet..." -ForegroundColor Yellow
+  & winget install --id Git.Git --scope user --silent --accept-package-agreements --accept-source-agreements
 }
 
 # 3. Check/install Claude Code
@@ -114,6 +128,11 @@ $vaultPath = Join-Path $parentDir $vaultName
 Write-Host ""
 Write-Host "Installing Shop OS to: $vaultPath" -ForegroundColor Cyan
 Write-Host ""
+
+# Refresh PATH so freshly-installed tools (node, git) are findable. WinGet
+# updates the machine/user PATH but doesn't always bubble that into the current
+# session, so the installer can't see `git` even though it was just installed.
+$env:PATH = [Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH","User")
 
 # 6. Run Shop OS installer with license key and vault path
 & npx -y @blueprintit/shop-os-install@latest --license "$licenseKey" --vault "$vaultPath" --yes

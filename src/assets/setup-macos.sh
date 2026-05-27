@@ -10,6 +10,7 @@ echo ""
 echo "This script will install:"
 echo "  • Homebrew (if needed)"
 echo "  • Node.js"
+echo "  • Git"
 echo "  • Claude Code"
 echo "  • Obsidian"
 echo "  • Shop OS Vault + Installer"
@@ -32,6 +33,19 @@ if ! command -v node &> /dev/null; then
   brew install node
 else
   echo "✓ Node.js found"
+fi
+
+# 2b. Check/install Git
+# The Shop OS npx installer uses git to refresh the plugin marketplace clone
+# (~/.claude/plugins/marketplaces/blueprint-skills). On most Macs git arrives
+# with the Command Line Tools that Homebrew triggers, but we install it
+# explicitly here so a fresh customer never lands in a "no git, silent fail"
+# state.
+if ! command -v git &> /dev/null; then
+  echo "📦 Installing Git via Homebrew..."
+  brew install git
+else
+  echo "✓ Git found"
 fi
 
 # 3. Check/install Claude Code

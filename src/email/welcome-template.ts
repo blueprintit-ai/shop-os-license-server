@@ -11,16 +11,16 @@ export function welcomeSubject(): string {
 export function welcomeText(input: WelcomeTemplateInput): string {
   return `Hi ${input.customerName},
 
-Thanks for picking up Shop OS Foundation. Your license key is below, along
-with everything you need to get installed in under 30 minutes.
+Thanks for picking up Shop OS Foundation. Your license key is embedded in
+the attached PDF. Everything you need to get installed in under 30 minutes
+is below.
 
 
 YOUR LICENSE KEY
 ${"─".repeat(60)}
-        ${input.licenseKey}
-${"─".repeat(60)}
 
-Save this key somewhere safe (1Password, a sticky note, an email folder).
+Look for your license key in the "Your license key" section of the attached
+PDF. Save it somewhere safe (1Password, a sticky note, an email folder).
 You will paste it once during install. We will never ask you to re-enter
 it after that.
 
@@ -33,15 +33,17 @@ re-download it any time from:
 
     ${input.pdfUrl}
 
-Open the PDF and follow the four prerequisite installs (Claude Pro, Node.js,
-Claude Code, Obsidian), then run this one command in Terminal (Mac) or
-PowerShell (Windows):
+To start, copy and paste this command in Terminal (Mac) or PowerShell (Windows):
 
-    npx -y --package=github:blueprintit-ai/shop-os-installer shop-os-install
+Mac:    curl -L https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh | bash
+Windows: iwr https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1 | iex
 
-When the installer asks for your license key, paste this:
+The installer will handle everything:
+• Guide you to choose where to create your Shop OS Vault
+• Install all required tools (Claude Pro, Node.js, Claude Code, Obsidian)
+• Automatically launch Claude Code when done
 
-    ${input.licenseKey}
+When the installer asks for your license key, find it in the attached PDF and paste it in.
 
 
 NEED HELP?
@@ -112,24 +114,32 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <!-- Greeting -->
 <tr><td style="padding:22px 0 0;">
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 12px;">Hi ${safeName},</p>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 4px;">Thanks for picking up <em style="font-style:italic;color:#1c6ea4;">Shop OS Foundation</em>. Your license key is below, along with everything you need to get installed in under 30 minutes.</p>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 4px;">Thanks for picking up <em style="font-style:italic;color:#1c6ea4;">Shop OS Foundation</em>. Your license key is embedded in the attached PDF. Everything you need to get installed in under 30 minutes is below.</p>
 </td></tr>
 
 <!-- § 01 License key -->
 <tr><td style="padding:28px 0 0;">
 <div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 01 &nbsp;·&nbsp; Your license key</div>
-<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:20px 16px;text-align:center;font-family:Menlo,'SF Mono',monospace;font-size:18px;letter-spacing:3px;color:#0c1e2f;font-weight:600;margin-top:8px;">${safeKey}</div>
-<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Save this somewhere safe. You will paste it once during install. We will never ask you to re-enter it.</p>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 8px;">Look for your license key in the <em style="font-style:italic;color:#1c6ea4;">"Your license key"</em> section of the attached PDF.</p>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Save it somewhere safe. You will paste it once during install. We will never ask you to re-enter it.</p>
 </td></tr>
 
 <!-- § 02 Install -->
 <tr><td style="padding:28px 0 0;">
 <div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 02 &nbsp;·&nbsp; Install Shop OS</div>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px;">The full install guide is attached to this email as a PDF. You can also <a href="${safeUrl}" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">re-download it any time</a>.</p>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 8px;">Open the PDF and follow the four prerequisites (Claude Pro, Node.js, Claude Code, Obsidian), then run this one command in Terminal (Mac) or PowerShell (Windows):</p>
-<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:10px 0;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">npx -y --package=github:blueprintit-ai/shop-os-installer shop-os-install</div>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">When the installer asks for your license key, paste this:</p>
-<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 16px;margin:8px 0 0;font-family:Menlo,'SF Mono',monospace;font-size:13px;letter-spacing:2px;color:#0c1e2f;text-align:center;font-weight:600;">${safeKey}</div>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 8px;">To start, copy and paste this command in Terminal (Mac) or PowerShell (Windows):</p>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Mac:</strong></p>
+<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">curl -L https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh | bash</div>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Windows:</strong></p>
+<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">iwr https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1 | iex</div>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">The installer will handle everything:</p>
+<ul style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px 24px;padding:0;">
+<li style="margin:0 0 6px;">Guide you to choose where to create your Shop OS Vault</li>
+<li style="margin:0 0 6px;">Install all required tools (Claude Pro, Node.js, Claude Code, Obsidian)</li>
+<li style="margin:0 0 6px;">Automatically launch Claude Code when done</li>
+</ul>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">When the installer asks for your license key, find it in the attached PDF and paste it in.</p>
 </td></tr>
 
 <!-- § 03 Help -->

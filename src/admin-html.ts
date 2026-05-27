@@ -82,13 +82,23 @@ export const ADMIN_HTML = `<!DOCTYPE html>
   }
   .table-wrap {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 8px; overflow: hidden; box-shadow: var(--shadow);
+    border-radius: 8px; overflow-x: auto; box-shadow: var(--shadow);
   }
   table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
   th { background: var(--bg); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); }
   tr:last-child td { border-bottom: none; }
   tr:hover { background: var(--bg); }
+  th.col-check, td.col-check {
+    width: 36px; padding-left: 14px; padding-right: 0; text-align: center;
+  }
+  th.col-check input, td.col-check input {
+    width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent);
+    vertical-align: middle;
+  }
+  th.col-actions, td.col-actions {
+    width: 1px; white-space: nowrap; text-align: right; padding-right: 14px;
+  }
   .key {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 12px; background: var(--bg); padding: 3px 6px; border-radius: 4px;
@@ -102,7 +112,27 @@ export const ADMIN_HTML = `<!DOCTYPE html>
   .pill.status-revoked { background: var(--danger-bg); color: var(--danger); }
   .pill.status-expired { background: #FEF6E0; color: #92511F; }
   .muted { color: var(--muted); font-size: 12px; }
-  .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
+  .row-actions { display: inline-flex; gap: 4px; justify-content: flex-end; white-space: nowrap; }
+  .row-actions button { padding: 5px 9px; font-size: 12px; border-radius: 5px; }
+  .bulk-bar {
+    display: none; align-items: center; gap: 12px;
+    background: var(--accent); color: var(--accent-fg);
+    padding: 10px 14px; border-radius: 8px; margin-bottom: 12px;
+    box-shadow: var(--shadow);
+  }
+  .bulk-bar.show { display: flex; }
+  .bulk-bar .count { font-weight: 600; }
+  .bulk-bar .spacer { flex: 1; }
+  .bulk-bar button {
+    font-size: 13px; padding: 6px 12px; border-radius: 5px;
+    background: transparent; color: var(--accent-fg);
+    border: 1px solid rgba(255,255,255,0.3);
+  }
+  .bulk-bar button:hover { background: rgba(255,255,255,0.1); }
+  .bulk-bar button.delete-bulk {
+    background: var(--danger); border-color: var(--danger); color: #fff;
+  }
+  .bulk-bar button.delete-bulk:hover { background: #962411; }
   .empty {
     padding: 60px 24px; text-align: center; color: var(--muted);
   }
@@ -156,11 +186,12 @@ export const ADMIN_HTML = `<!DOCTYPE html>
   .toast.show { opacity: 1; }
   @media (max-width: 720px) {
     main { padding: 14px; }
-    th:nth-child(3), td:nth-child(3),
-    th:nth-child(6), td:nth-child(6),
+    /* checkbox is col 1, so original 3,6,7,8,9 shift to 4,7,8,9,10 */
+    th:nth-child(4), td:nth-child(4),
     th:nth-child(7), td:nth-child(7),
     th:nth-child(8), td:nth-child(8),
-    th:nth-child(9), td:nth-child(9) { display: none; }
+    th:nth-child(9), td:nth-child(9),
+    th:nth-child(10), td:nth-child(10) { display: none; }
   }
 </style>
 </head>
@@ -201,10 +232,17 @@ export const ADMIN_HTML = `<!DOCTYPE html>
         <option value="none">No cohort</option>
       </select>
     </div>
+    <div id="bulk-bar" class="bulk-bar">
+      <span class="count" id="bulk-count">0 selected</span>
+      <span class="spacer"></span>
+      <button type="button" id="bulk-clear">Clear</button>
+      <button type="button" id="bulk-delete" class="delete-bulk">Delete selected</button>
+    </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
+            <th class="col-check"><input type="checkbox" id="select-all" title="Select all visible"></th>
             <th>Key</th>
             <th>Customer</th>
             <th>Email</th>
@@ -215,7 +253,7 @@ export const ADMIN_HTML = `<!DOCTYPE html>
             <th>Last seen</th>
             <th>Activations</th>
             <th>Status</th>
-            <th></th>
+            <th class="col-actions"></th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -292,6 +330,21 @@ export const ADMIN_HTML = `<!DOCTYPE html>
   </div>
 </dialog>
 
+<dialog id="bulk-delete-dialog">
+  <div class="head"><h2>Delete <span id="bulk-delete-count">0</span> licenses permanently?</h2></div>
+  <div class="body">
+    <p class="muted">This <strong>permanently removes</strong> the selected licenses from the database, including their cached welcome PDFs. The keys can no longer be validated, restored, or audited. Use <em>Revoke</em> on individual rows if you only want to disable them.</p>
+    <div id="bulk-delete-list" style="margin-top:10px;max-height:160px;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;"></div>
+    <p class="muted" style="margin-top:10px;">Type <strong>DELETE</strong> (uppercase) to confirm:</p>
+    <input id="bulk-delete-confirm-input" placeholder="DELETE" style="width:100%;margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font:inherit;font-family:ui-monospace,Menlo,monospace;font-size:13px;">
+    <div id="bulk-delete-error" class="error" hidden></div>
+  </div>
+  <div class="foot">
+    <button type="button" value="cancel">Cancel</button>
+    <button type="button" id="bulk-delete-confirm" class="danger" disabled>Delete forever</button>
+  </div>
+</dialog>
+
 <dialog id="delete-dialog">
   <div class="head"><h2>Delete license permanently?</h2></div>
   <div class="body">
@@ -309,7 +362,7 @@ export const ADMIN_HTML = `<!DOCTYPE html>
 <div class="toast" id="toast"></div>
 
 <script>
-const STATE = { token: sessionStorage.getItem("shopos.admin.token"), licenses: [] };
+const STATE = { token: sessionStorage.getItem("shopos.admin.token"), licenses: [], selected: new Set() };
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
@@ -414,6 +467,7 @@ function render() {
   if (list.length === 0) {
     tbody.innerHTML = "";
     $("#empty").hidden = false;
+    updateBulkBar(list);
     return;
   }
   $("#empty").hidden = true;
@@ -433,7 +487,9 @@ function render() {
       : "";
     const editBtn = \`<button class="ghost" data-action="edit" data-key="\${l.key}">Edit</button>\`;
     const deleteBtn = \`<button class="danger" data-action="delete" data-key="\${l.key}" title="Permanently remove from database">Delete</button>\`;
+    const checked = STATE.selected.has(l.key) ? "checked" : "";
     return \`<tr>
+      <td class="col-check"><input type="checkbox" class="row-check" data-key="\${l.key}" \${checked}></td>
       <td><span class="key" data-key="\${l.key}" title="Click to copy">\${l.key}</span></td>
       <td><strong>\${escapeHtml(l.customer || "")}</strong></td>
       <td class="muted">\${escapeHtml(l.email || "")}</td>
@@ -444,9 +500,51 @@ function render() {
       <td class="muted">\${fmtDate(l.last_seen)}</td>
       <td class="muted">\${l.activations || 0}</td>
       <td><span class="pill status-\${s}">\${s}</span></td>
-      <td class="row-actions">\${editBtn} \${revokeBtn} \${deleteBtn}</td>
+      <td class="col-actions"><div class="row-actions">\${editBtn} \${revokeBtn} \${deleteBtn}</div></td>
     </tr>\`;
   }).join("");
+  updateBulkBar(list);
+}
+
+function updateBulkBar(visibleList) {
+  const sel = STATE.selected;
+  const bar = $("#bulk-bar");
+  if (sel.size === 0) {
+    bar.classList.remove("show");
+  } else {
+    bar.classList.add("show");
+    $("#bulk-count").textContent = sel.size + " selected";
+  }
+  // Header checkbox: checked when all visible rows are in selection; indeterminate when some.
+  const visibleKeys = visibleList.map(l => l.key);
+  const visibleSelected = visibleKeys.filter(k => sel.has(k)).length;
+  const header = $("#select-all");
+  if (visibleKeys.length === 0) {
+    header.checked = false; header.indeterminate = false;
+  } else if (visibleSelected === visibleKeys.length) {
+    header.checked = true; header.indeterminate = false;
+  } else if (visibleSelected === 0) {
+    header.checked = false; header.indeterminate = false;
+  } else {
+    header.checked = false; header.indeterminate = true;
+  }
+}
+
+function currentlyVisibleList() {
+  // Recompute the same filter logic render() uses, without re-rendering the body.
+  const q = $("#search").value.trim().toLowerCase();
+  const filter = $("#filter-status").value;
+  const cohortFilter = $("#filter-cohort").value;
+  return STATE.licenses.filter(l => {
+    const s = statusOf(l);
+    if (filter === "active" && s !== "active") return false;
+    if (filter === "revoked" && s !== "revoked") return false;
+    if (cohortFilter === "lifetime" && !l.lifetimeUpdates) return false;
+    if (cohortFilter === "founding-50" && (l.cohort || "") !== "founding-50") return false;
+    if (cohortFilter === "none" && (l.cohort || "")) return false;
+    if (!q) return true;
+    return (l.key + " " + (l.customer || "") + " " + (l.email || "") + " " + (l.cohort || "")).toLowerCase().includes(q);
+  });
 }
 
 function escapeHtml(s) {
@@ -478,7 +576,69 @@ $("#search").addEventListener("input", render);
 $("#filter-status").addEventListener("change", render);
 $("#filter-cohort").addEventListener("change", render);
 
+$("#tbody").addEventListener("change", (e) => {
+  if (e.target.classList && e.target.classList.contains("row-check")) {
+    const key = e.target.dataset.key;
+    if (e.target.checked) STATE.selected.add(key);
+    else STATE.selected.delete(key);
+    updateBulkBar(currentlyVisibleList());
+  }
+});
+
+$("#select-all").addEventListener("change", (e) => {
+  const visible = currentlyVisibleList();
+  const allSelected = visible.length > 0 && visible.every(l => STATE.selected.has(l.key));
+  if (allSelected) {
+    for (const l of visible) STATE.selected.delete(l.key);
+  } else {
+    for (const l of visible) STATE.selected.add(l.key);
+  }
+  render();
+});
+
+$("#bulk-clear").addEventListener("click", () => {
+  STATE.selected.clear();
+  render();
+});
+
+$("#bulk-delete").addEventListener("click", () => {
+  if (STATE.selected.size === 0) return;
+  const keys = Array.from(STATE.selected);
+  $("#bulk-delete-count").textContent = keys.length;
+  $("#bulk-delete-list").innerHTML = keys.slice(0, 30).map(k => escapeHtml(k)).join("<br>")
+    + (keys.length > 30 ? \`<br><span class="muted">…and \${keys.length - 30} more</span>\` : "");
+  $("#bulk-delete-confirm-input").value = "";
+  $("#bulk-delete-confirm").disabled = true;
+  $("#bulk-delete-error").hidden = true;
+  $("#bulk-delete-dialog").showModal();
+  setTimeout(() => $("#bulk-delete-confirm-input").focus(), 0);
+});
+
+$("#bulk-delete-confirm-input").addEventListener("input", (e) => {
+  $("#bulk-delete-confirm").disabled = e.target.value !== "DELETE";
+});
+
+$("#bulk-delete-confirm").addEventListener("click", async () => {
+  const keys = Array.from(STATE.selected);
+  if (keys.length === 0) return;
+  $("#bulk-delete-confirm").disabled = true;
+  const r = await api("/delete-bulk", { method: "POST", body: { keys } });
+  if (!r.ok) {
+    const err = $("#bulk-delete-error");
+    err.textContent = "Bulk delete failed: " + (r.body.error || r.status);
+    err.hidden = false;
+    $("#bulk-delete-confirm").disabled = false;
+    return;
+  }
+  $("#bulk-delete-dialog").close();
+  const body = r.body || {};
+  toast(\`Deleted \${body.deleted || 0} of \${body.requested || keys.length}\${body.missing ? " (" + body.missing + " missing)" : ""}\`);
+  STATE.selected.clear();
+  refresh();
+});
+
 $("#tbody").addEventListener("click", (e) => {
+  if (e.target.classList && e.target.classList.contains("row-check")) return;
   const keyEl = e.target.closest(".key");
   if (keyEl) {
     navigator.clipboard.writeText(keyEl.dataset.key);

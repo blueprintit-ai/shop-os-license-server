@@ -9,6 +9,7 @@
  *   POST /issue                  -> issue a new license key (admin: requires bearer ADMIN_TOKEN)
  *   POST /revoke?key=...         -> soft revoke (sets cancelled_at; record preserved) (admin)
  *   POST /delete?key=...         -> hard delete (wipes KV record + cached PDF) (admin)
+ *   POST /delete-bulk            -> hard delete an array of keys (admin, max 200/call)
  *   POST /update-license?key=... -> patch lifetimeUpdates / cohort flags (admin)
  *   GET  /list                   -> list all licenses (admin)
  *
@@ -308,6 +309,50 @@ async function handleDelete(req: Request, url: URL, env: Env): Promise<Response>
   return json(req, { ok: true, key, deleted: true });
 }
 
+async function handleDeleteBulk(req: Request, env: Env): Promise<Response> {
+  const adminCheck = await requireAdmin(req, env);
+  if (adminCheck) return adminCheck;
+
+  let body: { keys?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return json(req, { error: "invalid JSON body" }, 400);
+  }
+  if (!Array.isArray(body.keys) || body.keys.length === 0) {
+    return json(req, { error: "keys must be a non-empty array" }, 400);
+  }
+  if (body.keys.length > 200) {
+    return json(req, { error: "max 200 keys per call" }, 400);
+  }
+
+  const results: Array<{ key: string; deleted: boolean; error?: string }> = [];
+  let deleted = 0;
+  let missing = 0;
+  for (const raw of body.keys as unknown[]) {
+    const key = typeof raw === "string" ? raw : String(raw);
+    if (!key.startsWith("SHOP-")) {
+      results.push({ key, deleted: false, error: "invalid key format" });
+      continue;
+    }
+    try {
+      const record = await env.LICENSES.get<LicenseRecord>(key, "json");
+      if (!record) {
+        results.push({ key, deleted: false, error: "not found" });
+        missing++;
+        continue;
+      }
+      await env.LICENSES.delete(key);
+      await env.LICENSES.delete(`pdf:welcome:${key}`);
+      results.push({ key, deleted: true });
+      deleted++;
+    } catch (e) {
+      results.push({ key, deleted: false, error: (e as Error).message });
+    }
+  }
+  return json(req, { ok: true, requested: (body.keys as unknown[]).length, deleted, missing, results });
+}
+
 async function handleList(req: Request, env: Env): Promise<Response> {
   const adminCheck = await requireAdmin(req, env);
   if (adminCheck) return adminCheck;
@@ -478,6 +523,7 @@ export default {
       if (path === "/issue" && method === "POST") return handleIssue(req, env);
       if (path === "/revoke" && method === "POST") return handleRevoke(req, url, env);
       if (path === "/delete" && method === "POST") return handleDelete(req, url, env);
+      if (path === "/delete-bulk" && method === "POST") return handleDeleteBulk(req, env);
       if (path === "/update-license" && method === "POST") return handleUpdateLicense(req, url, env);
       if (path === "/list" && method === "GET") return handleList(req, env);
       if (path === "/founding50-redeemed" && method === "GET") return handleFounding50Count(req, env);

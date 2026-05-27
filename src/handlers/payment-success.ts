@@ -187,12 +187,20 @@ export async function renderWelcomePdfBytes(env: any, licenseKey: string): Promi
         break-after: auto !important;
         margin-bottom: 32pt !important;
       }
-      h2[data-anchor="§ 02"] {
+      h2[data-anchor="§ 02"],
+      h2[data-anchor="§ 03"],
+      h2[data-anchor="§ 04"],
+      h2[data-anchor="§ 05"],
+      h2[data-anchor="§ 06"] {
         page-break-before: always !important;
         break-before: page !important;
         margin-top: 0 !important;
         border-top: none !important;
         padding-top: 0 !important;
+      }
+      ol, ul, pre {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
       }
       .signature {
         page-break-inside: avoid !important;

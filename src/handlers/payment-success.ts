@@ -162,14 +162,31 @@ export async function renderWelcomePdfBytes(env: any, licenseKey: string): Promi
   // footers the way headless Chrome's CLI does. Override @page margin to zero and
   // move content offset to body padding so the parchment body background fills the
   // entire page edge-to-edge. The footer is recreated via puppeteer's footerTemplate.
+  //
+  // Page layout rules:
+  //   - Page 1: cover, intro paragraph, and §01 (license key) — cover does NOT force a break
+  //   - Page 2: starts with §02 (Claude Pro subscription) — forced page break before it
+  //   - Subsequent sections flow naturally
   const puppeteerOverride = `
     <style>
       @page { margin: 0 !important; }
       body {
         padding-top: 0 !important;
         padding-right: 0.75in !important;
-        padding-bottom: 0 !important;
+        padding-bottom: 0.25in !important;
         padding-left: 0.75in !important;
+      }
+      .cover {
+        page-break-after: auto !important;
+        break-after: auto !important;
+        margin-bottom: 32pt !important;
+      }
+      h2[data-anchor="§ 02"] {
+        page-break-before: always !important;
+        break-before: page !important;
+        margin-top: 0 !important;
+        border-top: none !important;
+        padding-top: 0 !important;
       }
       .signature {
         page-break-inside: avoid !important;
@@ -185,7 +202,7 @@ export async function renderWelcomePdfBytes(env: any, licenseKey: string): Promi
   const pdfBytes = await page.pdf({
     format: "Letter",
     printBackground: true,
-    margin: { top: "0.85in", right: 0, bottom: "1.0in", left: 0 },
+    margin: { top: "1.0in", right: 0, bottom: "1.0in", left: 0 },
     displayHeaderFooter: true,
     headerTemplate: "<div></div>",
     footerTemplate: `

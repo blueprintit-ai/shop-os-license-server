@@ -115,18 +115,15 @@ Write-Host ""
 Write-Host "Installing Shop OS to: $vaultPath" -ForegroundColor Cyan
 Write-Host ""
 
-# 6. Run Shop OS installer with license key and vault path.
-# Use Start-Process -Wait so PowerShell waits for the FULL process tree
-# (npx.cmd -> cmd.exe -> node.exe). The PowerShell `&` operator on .cmd files
-# can return before grandchildren finish, causing Set-Location below to run
-# while the vault folder is still being created.
-$installerArgs = @("-y", "@blueprintit/shop-os-install@latest", "--license", $licenseKey, "--vault", $vaultPath, "--yes")
-$proc = Start-Process -FilePath "npx.cmd" -ArgumentList $installerArgs -NoNewWindow -Wait -PassThru
-if ($proc.ExitCode -ne 0) {
-  Write-Host ""
-  Write-Host "✗ Installer failed with exit code $($proc.ExitCode)." -ForegroundColor Red
-  Write-Host "Re-run the setup command, or contact support if it persists." -ForegroundColor Red
-  exit 1
+# 6. Run Shop OS installer with license key and vault path
+& npx -y @blueprintit/shop-os-install@latest --license "$licenseKey" --vault "$vaultPath" --yes
+
+# Poll for the vault folder to exist. PowerShell's & operator on npx.cmd can
+# return before its grandchildren (cmd.exe -> node.exe) finish writing files,
+# so a defensive wait prevents Set-Location from racing the installer.
+$deadline = [DateTime]::Now.AddSeconds(60)
+while (-not (Test-Path -LiteralPath $vaultPath) -and [DateTime]::Now -lt $deadline) {
+  Start-Sleep -Milliseconds 250
 }
 
 Write-Host ""

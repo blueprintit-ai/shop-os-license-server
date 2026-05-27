@@ -513,6 +513,35 @@ export default {
         return json(req, { status: "succeeded", licenseKey });
       }
 
+      // Serve installer scripts
+      if (method === "GET" && path === "/installer-macos.sh") {
+        const asset = await env.ASSETS.fetch(new Request("https://placeholder/setup-macos.sh"));
+        if (!asset.ok) return new Response("Not found", { status: 404 });
+        return new Response(asset.body, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/x-sh",
+            "Content-Disposition": 'attachment; filename="setup-macos.sh"',
+            "Cache-Control": "public, max-age=3600",
+            ...corsResponseHeaders(req),
+          },
+        });
+      }
+
+      if (method === "GET" && path === "/installer-windows.ps1") {
+        const asset = await env.ASSETS.fetch(new Request("https://placeholder/setup-windows.ps1"));
+        if (!asset.ok) return new Response("Not found", { status: 404 });
+        return new Response(asset.body, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/x-powershell",
+            "Content-Disposition": 'attachment; filename="setup-windows.ps1"',
+            "Cache-Control": "public, max-age=3600",
+            ...corsResponseHeaders(req),
+          },
+        });
+      }
+
       return json(req, { error: "not found", path, method }, 404);
     } catch (err) {
       return json(req, { error: "internal error", detail: String(err) }, 500);

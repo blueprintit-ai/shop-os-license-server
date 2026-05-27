@@ -11,7 +11,7 @@ binding = "LICENSES"
 id = "cfad69c7ae204758b6e68542d2d50dbd"
 
 # Browser Rendering for per-customer PDF generation
-[[browser]]
+[browser]
 binding = "BROWSER"
 
 # Secrets (set via `wrangler secret put ADMIN_TOKEN`, do NOT commit):

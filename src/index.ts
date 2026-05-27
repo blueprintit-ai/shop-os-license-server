@@ -7,7 +7,8 @@
  *   GET  /validate?key=...       -> validate a license key (public)
  *   GET  /refresh?key=...        -> re-validate, bump last_seen (public, used by skills periodically)
  *   POST /issue                  -> issue a new license key (admin: requires bearer ADMIN_TOKEN)
- *   POST /revoke?key=...         -> revoke a license key (admin)
+ *   POST /revoke?key=...         -> soft revoke (sets cancelled_at; record preserved) (admin)
+ *   POST /delete?key=...         -> hard delete (wipes KV record + cached PDF) (admin)
  *   POST /update-license?key=... -> patch lifetimeUpdates / cohort flags (admin)
  *   GET  /list                   -> list all licenses (admin)
  *
@@ -292,6 +293,21 @@ async function handleRevoke(req: Request, url: URL, env: Env): Promise<Response>
   return json(req, { ok: true, key, cancelled_at: record.cancelled_at });
 }
 
+async function handleDelete(req: Request, url: URL, env: Env): Promise<Response> {
+  const adminCheck = await requireAdmin(req, env);
+  if (adminCheck) return adminCheck;
+
+  const key = url.searchParams.get("key");
+  if (!key) return json(req, { error: "missing key" }, 400);
+
+  const record = await env.LICENSES.get<LicenseRecord>(key, "json");
+  if (!record) return json(req, { error: "not found" }, 404);
+
+  await env.LICENSES.delete(key);
+  await env.LICENSES.delete(`pdf:welcome:${key}`);
+  return json(req, { ok: true, key, deleted: true });
+}
+
 async function handleList(req: Request, env: Env): Promise<Response> {
   const adminCheck = await requireAdmin(req, env);
   if (adminCheck) return adminCheck;
@@ -461,6 +477,7 @@ export default {
       if (path === "/refresh" && method === "GET") return handleValidate(req, url, env, true);
       if (path === "/issue" && method === "POST") return handleIssue(req, env);
       if (path === "/revoke" && method === "POST") return handleRevoke(req, url, env);
+      if (path === "/delete" && method === "POST") return handleDelete(req, url, env);
       if (path === "/update-license" && method === "POST") return handleUpdateLicense(req, url, env);
       if (path === "/list" && method === "GET") return handleList(req, env);
       if (path === "/founding50-redeemed" && method === "GET") return handleFounding50Count(req, env);

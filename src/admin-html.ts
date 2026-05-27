@@ -284,11 +284,25 @@ export const ADMIN_HTML = `<!DOCTYPE html>
 <dialog id="revoke-dialog">
   <div class="head"><h2>Revoke license?</h2></div>
   <div class="body">
-    <p class="muted">This marks <strong id="revoke-key"></strong> as cancelled. Subsequent installer validations will return 403. Cannot be undone via this UI (you can re-issue a new key for the customer).</p>
+    <p class="muted">This marks <strong id="revoke-key"></strong> as cancelled. Subsequent installer validations will return 403. The record stays in the database for audit. Use <em>Delete</em> if you want to remove it entirely.</p>
   </div>
   <div class="foot">
     <button type="button" value="cancel">Cancel</button>
     <button type="button" id="revoke-confirm" class="danger">Revoke</button>
+  </div>
+</dialog>
+
+<dialog id="delete-dialog">
+  <div class="head"><h2>Delete license permanently?</h2></div>
+  <div class="body">
+    <p class="muted">This <strong>permanently removes</strong> <strong id="delete-key"></strong> from the database, including its cached welcome PDF. The key can no longer be validated, restored, or audited. Use <em>Revoke</em> instead if you only want to disable it.</p>
+    <p class="muted" style="margin-top:10px;">Type the full license key to confirm:</p>
+    <input id="delete-confirm-input" placeholder="SHOP-XXXX-YYYY-ZZZZ" style="width:100%;margin-top:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font:inherit;font-family:ui-monospace,Menlo,monospace;font-size:13px;">
+    <div id="delete-error" class="error" hidden></div>
+  </div>
+  <div class="foot">
+    <button type="button" value="cancel">Cancel</button>
+    <button type="button" id="delete-confirm" class="danger" disabled>Delete forever</button>
   </div>
 </dialog>
 
@@ -418,6 +432,7 @@ function render() {
       ? \`<button class="danger" data-action="revoke" data-key="\${l.key}">Revoke</button>\`
       : "";
     const editBtn = \`<button class="ghost" data-action="edit" data-key="\${l.key}">Edit</button>\`;
+    const deleteBtn = \`<button class="danger" data-action="delete" data-key="\${l.key}" title="Permanently remove from database">Delete</button>\`;
     return \`<tr>
       <td><span class="key" data-key="\${l.key}" title="Click to copy">\${l.key}</span></td>
       <td><strong>\${escapeHtml(l.customer || "")}</strong></td>
@@ -429,7 +444,7 @@ function render() {
       <td class="muted">\${fmtDate(l.last_seen)}</td>
       <td class="muted">\${l.activations || 0}</td>
       <td><span class="pill status-\${s}">\${s}</span></td>
-      <td class="row-actions">\${editBtn} \${revokeBtn}</td>
+      <td class="row-actions">\${editBtn} \${revokeBtn} \${deleteBtn}</td>
     </tr>\`;
   }).join("");
 }
@@ -486,7 +501,35 @@ $("#tbody").addEventListener("click", (e) => {
     $("#edit-form").dataset.key = key;
     $("#edit-error").hidden = true;
     $("#edit-dialog").showModal();
+  } else if (action === "delete") {
+    const key = e.target.dataset.key;
+    $("#delete-key").textContent = key;
+    $("#delete-confirm").dataset.key = key;
+    $("#delete-confirm-input").value = "";
+    $("#delete-confirm").disabled = true;
+    $("#delete-error").hidden = true;
+    $("#delete-dialog").showModal();
+    setTimeout(() => $("#delete-confirm-input").focus(), 0);
   }
+});
+
+$("#delete-confirm-input").addEventListener("input", (e) => {
+  const expected = $("#delete-confirm").dataset.key;
+  $("#delete-confirm").disabled = e.target.value.trim() !== expected;
+});
+
+$("#delete-confirm").addEventListener("click", async () => {
+  const key = $("#delete-confirm").dataset.key;
+  const r = await api("/delete?key=" + encodeURIComponent(key), { method: "POST" });
+  if (!r.ok) {
+    const err = $("#delete-error");
+    err.textContent = "Delete failed: " + (r.body.error || r.status);
+    err.hidden = false;
+    return;
+  }
+  $("#delete-dialog").close();
+  toast("Deleted " + key);
+  refresh();
 });
 
 $("#revoke-confirm").addEventListener("click", async () => {

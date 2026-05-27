@@ -151,8 +151,7 @@ Write-Host "🎉 Setup complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Sign in to Claude Code if prompted"
-Write-Host "  2. Open your Shop OS Vault folder in Obsidian"
-Write-Host "  3. Type /bp-setup to personalize your vault"
+Write-Host "  2. Type /bp-setup at the Claude prompt to personalize your vault"
 Write-Host ""
 Write-Host "Launching Claude Code..." -ForegroundColor Cyan
 Start-Sleep -Seconds 1

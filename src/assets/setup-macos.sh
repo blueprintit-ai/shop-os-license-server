@@ -17,6 +17,18 @@ echo "  • Shop OS Vault + Installer"
 echo ""
 echo "You'll be prompted for your license key after prerequisites are installed."
 echo ""
+echo "⚠️  Mac will ask for your login password in a moment."
+echo "    This is normal: Homebrew needs it to install developer tools."
+echo "    Type it in (the cursor won't move) and press Enter."
+echo ""
+
+# Pre-collect sudo credentials up front so the password prompt happens
+# at the very start, not mid-install after Homebrew has already printed
+# progress noise. Cached for ~5 minutes, long enough for Homebrew to
+# finish without re-prompting.
+if ! command -v brew &> /dev/null; then
+  sudo -v
+fi
 
 # 1. Check/install Homebrew
 if ! command -v brew &> /dev/null; then
@@ -108,8 +120,7 @@ echo "🎉 Setup complete!"
 echo ""
 echo "Next steps:"
 echo "  1. Sign in to Claude Code if prompted"
-echo "  2. Open your Shop OS Vault folder in Obsidian"
-echo "  3. Type /bp-setup to personalize your vault"
+echo "  2. Type /bp-setup at the Claude prompt to personalize your vault"
 echo ""
 echo "Launching Claude Code..."
 sleep 1

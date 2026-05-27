@@ -693,7 +693,9 @@ pre.ascii-diagram {
 <h2 data-anchor="§ 02">Before you start: Claude Pro subscription</h2>
 <p><strong>Already have Claude Pro or Max?</strong> You're all set. Skip to the next section.</p>
 <p>If not, sign up at <strong>https://claude.ai</strong> and pick the <strong>Pro</strong> plan (~$20/month from Anthropic, not from us). Pro is the right starting point for Shop OS. As your Shop Brain grows and your team uses it every day, you can upgrade to the <strong>Max</strong> plan (~$100/month) for higher usage limits. Start with Pro.</p>
-<h2 data-anchor="§ 03">Install Shop OS: One Command</h2>
+<h2 data-anchor="§ 03">Step 0: Set up Claude Code Terminal (first-time only)</h2>
+<p>If you have never used Claude Code Terminal on this computer, watch this 60-second walkthrough first: <strong>{{VIDEO_URL}}</strong>. It covers signing in with your Claude account through your browser and picking a color theme, so the one-command install below runs end-to-end without stopping for setup screens. If you already use Claude Code on this machine, skip ahead.</p>
+<h2 data-anchor="§ 04">Install Shop OS: One Command</h2>
 <p>Open Terminal (Mac: press Cmd+Space, type <code>terminal</code>, press Enter) or PowerShell (Windows: press the Windows key, type <code>powershell</code>, press Enter, then right-click and choose <strong>Run as administrator</strong>).</p>
 <p><strong>Mac</strong> (in Terminal), copy and paste this line:</p>
 <pre><code>/bin/bash -c &quot;$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)&quot;
@@ -701,6 +703,9 @@ pre.ascii-diagram {
 <p><strong>Windows</strong> (in PowerShell as Administrator), copy and paste this line:</p>
 <pre><code class="language-powershell">&amp;([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
 </code></pre>
+<blockquote>
+<p><strong>Heads up, Mac users:</strong> you will be asked for your Mac login password near the start. That is Homebrew installing developer tools. Type your password (the cursor will not move, that is normal) and press Enter.</p>
+</blockquote>
 <p>The script will:</p>
 <ol>
 <li>Install Node.js (if you don't have it)</li>
@@ -713,19 +718,12 @@ pre.ascii-diagram {
 - <strong>One computer only?</strong> Your home folder, Documents, or Desktop.
 - <strong>Multiple computers?</strong> Put it inside Dropbox, iCloud Drive, or OneDrive so it syncs across your machines.</p>
 <p>The whole thing takes about 5 minutes depending on your internet speed.</p>
-<h2 data-anchor="§ 04">After install: your first session</h2>
-<p>The installer prints <code>✓ Shop OS installation complete!</code> along with the exact next steps. Here they are spelled out.</p>
-<h3>Step 1. Open your vault in Obsidian</h3>
-<p>Launch Obsidian. Click "Open folder as vault". You may need to click the small folder icon in the corner first to access this option.</p>
-<p>Select the "Shop OS Vault" folder the installer created in your home directory. Click Open.</p>
-<p>You will now see your vault in Obsidian's main window. There is not much in it yet, just a <code>CLAUDE.md</code> file and a <code>Raw/</code> folder. That is about to change.</p>
-<h3>Step 2. Run the onboarding interview</h3>
-<p>At the Claude prompt, type:</p>
+<h2 data-anchor="§ 05">After install: your first session</h2>
+<p>The installer prints <code>✓ Shop OS installation complete!</code> and launches Claude Code into your new vault automatically. At the Claude prompt, type:</p>
 <pre><code>/bp-setup
 </code></pre>
-<p>This kicks off a 10-minute onboarding interview that asks about your shop name, owner, key staff, services, and daily routines. As you answer, Obsidian's file list on the left side will fill up with the notes Claude is creating for you. You can watch your vault populate in real time.</p>
-<p>By the end of the interview, you have a configured Shop OS vault ready to use. We send a follow-up document called "Your First Week with Shop OS" that walks you through what to do next.</p>
-<h2 data-anchor="§ 05">Letting your team use Shop OS Chat</h2>
+<p>This kicks off a 10-minute onboarding interview that asks about your shop name, owner, key staff, services, and daily routines. By the end of the interview, you have a configured Shop OS vault ready to use. We send a follow-up document called "Your First Week with Shop OS" that walks you through what to do next, including how to open the vault in Obsidian to browse and edit notes.</p>
+<h2 data-anchor="§ 06">Letting your team use Shop OS Chat</h2>
 <p>Inside your vault folder, alongside <code>CLAUDE.md</code> and <code>Raw/</code>, the installer also dropped a file called <code>Shop OS Chat.command</code> (Mac) or <code>Shop OS Chat.bat</code> (Windows). This is the read-only chat your team can use to ask questions about anything in the vault. Suppliers, past jobs, customer history, contract terms, all searchable from a simple chat window.</p>
 <h3>How it works</h3>
 <p>Anyone in your shop double-clicks the file. A small terminal window opens (this is normal, it is the chat server running). The default browser opens to <code>localhost</code> with the chat page.</p>
@@ -735,7 +733,7 @@ pre.ascii-diagram {
 <p>This is on purpose. Your team gets fast answers without any risk of accidentally changing customer records, supplier lists, or contracts. You stay the one with write access via Claude Code.</p>
 <h3>First launch is slower</h3>
 <p>The very first launch takes about 20 to 30 seconds while the chat downloads from GitHub. Every launch after that is instant.</p>
-<h2 data-anchor="§ 06">Need help?</h2>
+<h2 data-anchor="§ 07">Need help?</h2>
 <p>Reply to your welcome email. We will respond ASAP.</p>
 <p>Common first-time issues, already documented:</p>
 <ul>

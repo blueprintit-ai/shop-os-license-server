@@ -39,6 +39,10 @@ To start, copy and paste this command in Terminal (Mac) or PowerShell (Windows):
 Mac:    /bin/bash -c "$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)"
 Windows: &([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
 
+On Mac, you will be asked for your Mac login password near the start.
+That is Homebrew installing developer tools. Type your password (the
+cursor will not move) and press Enter. This is normal and safe.
+
 The installer will handle everything:
 • Guide you to choose where to create your Shop OS Vault
 • Install all required tools (Claude Pro, Node.js, Claude Code, Obsidian)
@@ -135,6 +139,7 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">/bin/bash -c "$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)"</div>
 <p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Windows:</strong></p>
 <div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">&amp;([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))</div>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:12px 0 8px;background:#fdf6e3;border-left:3px solid #c2461f;padding:10px 12px;"><strong>Heads up, Mac users:</strong> you will be asked for your Mac login password near the start. That is Homebrew installing developer tools. Type your password (the cursor will not move) and press Enter. This is normal and safe.</p>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">The installer will handle everything:</p>
 <ul style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px 24px;padding:0;">
 <li style="margin:0 0 6px;">Guide you to choose where to create your Shop OS Vault</li>

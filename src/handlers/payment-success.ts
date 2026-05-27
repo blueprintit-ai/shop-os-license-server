@@ -169,12 +169,18 @@ export async function renderWelcomePdfBytes(env: any, licenseKey: string): Promi
   //   - Subsequent sections flow naturally
   const puppeteerOverride = `
     <style>
-      @page { margin: 0 !important; }
+      @page {
+        margin: 1.5in 0 1.5in 0 !important;
+        background: #f4efe3 !important;
+      }
+      html, body {
+        background-color: #f4efe3 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
       body {
-        padding-top: 0 !important;
-        padding-right: 0.75in !important;
-        padding-bottom: 0.25in !important;
         padding-left: 0.75in !important;
+        padding-right: 0.75in !important;
       }
       .cover {
         page-break-after: auto !important;
@@ -204,7 +210,9 @@ export async function renderWelcomePdfBytes(env: any, licenseKey: string): Promi
     printBackground: true,
     margin: { top: "1.0in", right: 0, bottom: "1.0in", left: 0 },
     displayHeaderFooter: true,
-    headerTemplate: "<div></div>",
+    headerTemplate: `
+      <div style="width:100%;height:100%;background-color:#f4efe3;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>
+    `,
     footerTemplate: `
       <div style="width:100%;height:100%;background-color:#f4efe3;-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box;margin:0;padding:0;">
         <div style="margin:0 0.75in;padding-top:14pt;border-top:0.5pt solid #1c6ea4;font-family:'SF Mono','Menlo','Consolas',monospace;font-size:7.5pt;color:#2a3f55;text-transform:uppercase;letter-spacing:0.1em;display:flex;justify-content:space-between;">

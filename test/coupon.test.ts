@@ -75,10 +75,10 @@ describe("validateCoupon", () => {
   });
 
   it("handles percent_off coupons (100% off)", async () => {
-    const r = await validateCoupon(stripeMock(makePromo({ amount_off: null, percent_off: 100 })), "INSIDER1");
+    const r = await validateCoupon(stripeMock(makePromo({ amount_off: null, percent_off: 100 })), "INSIDER100");
     expect(r.valid).toBe(true);
     expect(r.finalPrice).toBe(0);
-    expect(r.discountAmount).toBe(75000);
+    expect(r.discountAmount).toBe(100000);
   });
 
   it("returns affiliate from coupon metadata", async () => {

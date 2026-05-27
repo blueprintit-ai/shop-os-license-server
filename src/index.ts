@@ -27,7 +27,8 @@ import { PayPalClient } from "./payments/paypal.js";
 import { validateCoupon } from "./payments/coupon.js";
 import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
 import { handlePayPalWebhook } from "./handlers/paypal-webhook.js";
-import { handlePaymentSuccess } from "./handlers/payment-success.js";
+import { handlePaymentSuccess, renderWelcomePdfBytes } from "./handlers/payment-success.js";
+import { welcomeHtml, welcomeText } from "./email/welcome-template.js";
 
 export interface Env {
   LICENSES: KVNamespace;
@@ -319,6 +320,53 @@ export default {
     }
 
     try {
+      // Admin-only: preview the welcome email. Pass ?format=text for plain-text version,
+      // ?key=... for a license key, ?name=... for customer name.
+      if (method === "GET" && path === "/admin/preview-welcome-email") {
+        const adminCheck = await requireAdmin(req, env);
+        if (adminCheck) return adminCheck;
+        const url = new URL(req.url);
+        const licenseKey = url.searchParams.get("key") || "SHOP-PREV-IEW0-0000";
+        const customerName = url.searchParams.get("name") || "Test Customer";
+        const format = url.searchParams.get("format") || "html";
+        const input = {
+          customerName,
+          licenseKey,
+          pdfUrl: `https://shop-os-license-server.glenn-15d.workers.dev/welcome.pdf`,
+        };
+        if (format === "text") {
+          return new Response(welcomeText(input), {
+            status: 200,
+            headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", ...corsResponseHeaders(req) },
+          });
+        }
+        return new Response(welcomeHtml(input), {
+          status: 200,
+          headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...corsResponseHeaders(req) },
+        });
+      }
+
+      // Admin-only: render the per-customer welcome PDF on demand for previewing.
+      // Use: curl -H "Authorization: Bearer $(cat ~/.shopos-admin-token)" \
+      //        "https://shop-os-license-server.glenn-15d.workers.dev/admin/preview-welcome.pdf?key=SHOP-XXXX-YYYY-ZZZZ" \
+      //        -o preview.pdf
+      if (method === "GET" && path === "/admin/preview-welcome.pdf") {
+        const adminCheck = await requireAdmin(req, env);
+        if (adminCheck) return adminCheck;
+        const url = new URL(req.url);
+        const licenseKey = url.searchParams.get("key") || "SHOP-PREV-IEW0-0000";
+        const pdfBytes = await renderWelcomePdfBytes(env, licenseKey);
+        return new Response(pdfBytes, {
+          status: 200,
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": 'inline; filename="shop-os-welcome-preview.pdf"',
+            "Cache-Control": "no-store",
+            ...corsResponseHeaders(req),
+          },
+        });
+      }
+
       // Serve welcome PDF from assets binding at the canonical /welcome.pdf URL.
       if (method === "GET" && path === "/welcome.pdf") {
         const asset = await env.ASSETS.fetch(new Request("https://placeholder/shop-os-welcome.pdf"));
@@ -534,8 +582,7 @@ export default {
         return new Response(asset.body, {
           status: 200,
           headers: {
-            "Content-Type": "application/x-powershell",
-            "Content-Disposition": 'attachment; filename="setup-windows.ps1"',
+            "Content-Type": "text/plain; charset=utf-8",
             "Cache-Control": "public, max-age=3600",
             ...corsResponseHeaders(req),
           },

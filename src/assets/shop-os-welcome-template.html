@@ -306,6 +306,8 @@ pre.ascii-diagram {
   margin-top: 10pt;
   line-height: 1.5;
   font-family: Georgia, serif;
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
 /* ---- Page break helpers ---- */
@@ -694,7 +696,7 @@ pre.ascii-diagram {
 <h2 data-anchor="§ 03">Install Shop OS: One Command</h2>
 <p>Open Terminal (Mac: press Cmd+Space, type <code>terminal</code>, press Enter) or PowerShell (Windows: press the Windows key, type <code>powershell</code>, press Enter, then right-click and choose <strong>Run as administrator</strong>).</p>
 <p><strong>Mac</strong> (in Terminal), copy and paste this line:</p>
-<pre><code>curl -L https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh | bash
+<pre><code>/bin/bash -c &quot;$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)&quot;
 </code></pre>
 <p><strong>Windows</strong> (in PowerShell as Administrator), copy and paste this line:</p>
 <pre><code class="language-powershell">&amp;([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
@@ -719,7 +721,7 @@ pre.ascii-diagram {
 <p>You will now see your vault in Obsidian's main window. There is not much in it yet, just a <code>CLAUDE.md</code> file and a <code>Raw/</code> folder. That is about to change.</p>
 <h3>Step 2. Run the onboarding interview</h3>
 <p>At the Claude prompt, type:</p>
-<pre><code>/os-setup
+<pre><code>/bp-setup
 </code></pre>
 <p>This kicks off a 10-minute onboarding interview that asks about your shop name, owner, key staff, services, and daily routines. As you answer, Obsidian's file list on the left side will fill up with the notes Claude is creating for you. You can watch your vault populate in real time.</p>
 <p>By the end of the interview, you have a configured Shop OS vault ready to use. We send a follow-up document called "Your First Week with Shop OS" that walks you through what to do next.</p>
@@ -743,12 +745,12 @@ pre.ascii-diagram {
 <li><strong>Anything else</strong> gets answered by reply email, usually with a 15-minute screen-share to fix the issue live.</li>
 </ul>
 <p>Welcome aboard.</p>
-<p class="signature">
+<div class="signature" style="page-break-inside: avoid; break-inside: avoid;">
 <strong>Glenn Chua</strong>, Founder<br>
 Blueprint IT, LLC<br>
 <a href="mailto:glenn@blueprintit.ai">glenn@blueprintit.ai</a><br>
 <a href="https://blueprintit.ai">www.blueprintit.ai</a>
-</p>
+</div>
 
 </body>
 </html>

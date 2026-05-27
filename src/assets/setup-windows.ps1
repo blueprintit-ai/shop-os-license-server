@@ -18,17 +18,13 @@ Write-Host ""
 # Helper function
 function Check-Command {
   param([string]$Name)
-  $null = Get-Command $Name -ErrorAction SilentlyContinue
-  return $?
+  return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
 function Check-WinGet {
   $wingetPath = "C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe"
-  $found = Test-Path (Resolve-Path $wingetPath -ErrorAction SilentlyContinue)
-  if (-not $found) {
-    $found = Check-Command winget
-  }
-  return $found
+  if (Test-Path $wingetPath) { return $true }
+  return (Check-Command winget)
 }
 
 # 1. Check WinGet
@@ -73,7 +69,7 @@ if (Test-Path $env:USERPROFILE\.claude) {
 
 # 4. Check/install Obsidian
 Write-Host ""
-if (Check-Command obsidian -ErrorAction SilentlyContinue) {
+if (Check-Command obsidian) {
   Write-Host "✓ Obsidian found" -ForegroundColor Green
 } else {
   Write-Host "📦 Installing Obsidian via WinGet..." -ForegroundColor Yellow
@@ -120,19 +116,22 @@ Write-Host "Installing Shop OS to: $vaultPath" -ForegroundColor Cyan
 Write-Host ""
 
 # 6. Run Shop OS installer with license key and vault path
-& npx -y @blueprintit/shop-os-install --license "$licenseKey" --vault "$vaultPath" --yes
+& npx -y @blueprintit/shop-os-install@latest --license "$licenseKey" --vault "$vaultPath" --yes
 
 Write-Host ""
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "🎉 Setup complete!" -ForegroundColor Green
 Write-Host ""
-Write-Host "Launching Claude Code..."
-Start-Sleep -Seconds 2
-Start-Process "Claude Code"
-
-Write-Host ""
-Write-Host "Next steps:"
+Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Sign in to Claude Code if prompted"
 Write-Host "  2. Open your Shop OS Vault folder in Obsidian"
-Write-Host "  3. Run /os-setup in Claude Code to personalize your vault"
+Write-Host "  3. Type /bp-setup to personalize your vault"
 Write-Host ""
+Write-Host "Launching Claude Code..." -ForegroundColor Cyan
+Start-Sleep -Seconds 1
+
+# Refresh PATH so freshly-installed `claude` is found in this session
+$env:PATH = [Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH","User")
+
+Set-Location -LiteralPath $vaultPath
+claude

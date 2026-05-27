@@ -11,18 +11,19 @@ export function welcomeSubject(): string {
 export function welcomeText(input: WelcomeTemplateInput): string {
   return `Hi ${input.customerName},
 
-Thanks for picking up Shop OS Foundation. Your license key is embedded in
-the attached PDF. Everything you need to get installed in under 30 minutes
-is below.
+Thanks for picking up Shop OS Foundation. Your license key is below
+(also embedded in the attached PDF). Everything you need to get installed
+in under 15 minutes follows.
 
 
 YOUR LICENSE KEY
 ${"─".repeat(60)}
 
-Look for your license key in the "Your license key" section of the attached
-PDF. Save it somewhere safe (1Password, a sticky note, an email folder).
+    ${input.licenseKey}
+
+Save it somewhere safe (1Password, a sticky note, an email folder).
 You will paste it once during install. We will never ask you to re-enter
-it after that.
+it after that. Keep this email so you can reference the key later.
 
 
 INSTALL SHOP OS
@@ -35,7 +36,7 @@ re-download it any time from:
 
 To start, copy and paste this command in Terminal (Mac) or PowerShell (Windows):
 
-Mac:    curl -L https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh | bash
+Mac:    /bin/bash -c "$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)"
 Windows: &([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
 
 The installer will handle everything:
@@ -43,7 +44,7 @@ The installer will handle everything:
 • Install all required tools (Claude Pro, Node.js, Claude Code, Obsidian)
 • Automatically launch Claude Code when done
 
-When the installer asks for your license key, find it in the attached PDF and paste it in.
+When the installer asks for your license key, copy it from above and paste it in.
 
 
 NEED HELP?
@@ -114,14 +115,15 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <!-- Greeting -->
 <tr><td style="padding:22px 0 0;">
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 12px;">Hi ${safeName},</p>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 4px;">Thanks for picking up <em style="font-style:italic;color:#1c6ea4;">Shop OS Foundation</em>. Your license key is embedded in the attached PDF. Everything you need to get installed in under 30 minutes is below.</p>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 4px;">Thanks for picking up <em style="font-style:italic;color:#1c6ea4;">Shop OS Foundation</em>. Your license key is below (also embedded in the attached PDF). Everything you need to get installed in under 15 minutes follows.</p>
 </td></tr>
 
 <!-- § 01 License key -->
 <tr><td style="padding:28px 0 0;">
 <div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 01 &nbsp;·&nbsp; Your license key</div>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 8px;">Look for your license key in the <em style="font-style:italic;color:#1c6ea4;">"Your license key"</em> section of the attached PDF.</p>
-<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Save it somewhere safe. You will paste it once during install. We will never ask you to re-enter it.</p>
+<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:16px 18px;margin:12px 0 10px;font-family:Menlo,'SF Mono',monospace;font-size:16px;letter-spacing:0.08em;color:#0c1e2f;font-weight:600;word-break:break-all;">${safeKey}</div>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 8px;">Save it somewhere safe (1Password, a sticky note, an email folder). You will paste it once during install. We will never ask you to re-enter it.</p>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Keep this email so you can reference the key later. It is also embedded in the attached PDF.</p>
 </td></tr>
 
 <!-- § 02 Install -->
@@ -130,7 +132,7 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px;">The full install guide is attached to this email as a PDF. You can also <a href="${safeUrl}" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">re-download it any time</a>.</p>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 8px;">To start, copy and paste this command in Terminal (Mac) or PowerShell (Windows):</p>
 <p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Mac:</strong></p>
-<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">curl -L https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh | bash</div>
+<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">/bin/bash -c "$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)"</div>
 <p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Windows:</strong></p>
 <div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">&amp;([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))</div>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">The installer will handle everything:</p>
@@ -139,7 +141,7 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <li style="margin:0 0 6px;">Install all required tools (Claude Pro, Node.js, Claude Code, Obsidian)</li>
 <li style="margin:0 0 6px;">Automatically launch Claude Code when done</li>
 </ul>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">When the installer asks for your license key, find it in the attached PDF and paste it in.</p>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">When the installer asks for your license key, copy it from § 01 above and paste it in.</p>
 </td></tr>
 
 <!-- § 03 Help -->

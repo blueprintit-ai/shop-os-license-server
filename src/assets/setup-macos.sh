@@ -56,7 +56,7 @@ echo "=========================================="
 echo "✨ Prerequisites complete!"
 echo ""
 
-read -p "Enter your Shop OS license key: " LICENSE_KEY
+read -p "Enter your Shop OS license key: " LICENSE_KEY < /dev/tty
 
 if [ -z "$LICENSE_KEY" ]; then
   echo "✗ No license key provided. Exiting."
@@ -75,7 +75,7 @@ if [ -z "$PARENT_DIR" ]; then
   exit 1
 fi
 
-read -p "Name your vault folder [Shop OS Vault]: " VAULT_NAME
+read -p "Name your vault folder [Shop OS Vault]: " VAULT_NAME < /dev/tty
 VAULT_NAME="${VAULT_NAME:-Shop OS Vault}"
 
 VAULT_PATH="${PARENT_DIR%/}/$VAULT_NAME"
@@ -85,19 +85,20 @@ echo "Installing Shop OS to: $VAULT_PATH"
 echo ""
 
 # 6. Run Shop OS installer with license key and vault path
-npx -y @blueprintit/shop-os-install --license "$LICENSE_KEY" --vault "$VAULT_PATH" --yes
+# Redirect stdin to /dev/tty so npx doesn't drain the curl|bash pipe
+npx -y @blueprintit/shop-os-install@latest --license "$LICENSE_KEY" --vault "$VAULT_PATH" --yes < /dev/tty
 
 echo ""
 echo "=========================================="
 echo "🎉 Setup complete!"
 echo ""
-echo "Launching Claude Code..."
-sleep 2
-open -a "Claude Code"
-
-echo ""
 echo "Next steps:"
-echo "  1. If this is your first time, sign in to Claude Code (you'll be prompted)"
+echo "  1. Sign in to Claude Code if prompted"
 echo "  2. Open your Shop OS Vault folder in Obsidian"
-echo "  3. Run /os-setup in Claude Code to personalize your vault"
+echo "  3. Type /bp-setup to personalize your vault"
 echo ""
+echo "Launching Claude Code..."
+sleep 1
+
+cd "$VAULT_PATH"
+exec claude

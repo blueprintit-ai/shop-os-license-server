@@ -153,16 +153,55 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   return btoa(s);
 }
 
-async function generateCustomWelcomePdf(env: any, licenseKey: string): Promise<string> {
+export async function renderWelcomePdfBytes(env: any, licenseKey: string): Promise<Uint8Array> {
   const resp = await env.ASSETS.fetch(new Request("https://placeholder/shop-os-welcome-template.html"));
   let html = await resp.text();
   html = html.replace("SHOP-XXXX-YYYY-ZZZZ", licenseKey);
 
+  // Puppeteer/Chrome PDF doesn't honor CSS `@page` margins or `@page` margin-box
+  // footers the way headless Chrome's CLI does. Override @page margin to zero and
+  // move content offset to body padding so the parchment body background fills the
+  // entire page edge-to-edge. The footer is recreated via puppeteer's footerTemplate.
+  const puppeteerOverride = `
+    <style>
+      @page { margin: 0 !important; }
+      body {
+        padding-top: 0 !important;
+        padding-right: 0.75in !important;
+        padding-bottom: 0 !important;
+        padding-left: 0.75in !important;
+      }
+      .signature {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+    </style>
+  `;
+  html = html.replace("</head>", puppeteerOverride + "</head>");
+
   const browser = await puppeteer.launch(env.BROWSER);
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: "networkidle0" });
-  const pdfBytes = await page.pdf({ format: "Letter", printBackground: true });
+  const pdfBytes = await page.pdf({
+    format: "Letter",
+    printBackground: true,
+    margin: { top: "0.85in", right: 0, bottom: "1.0in", left: 0 },
+    displayHeaderFooter: true,
+    headerTemplate: "<div></div>",
+    footerTemplate: `
+      <div style="width:100%;height:100%;background-color:#f4efe3;-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box;margin:0;padding:0;">
+        <div style="margin:0 0.75in;padding-top:14pt;border-top:0.5pt solid #1c6ea4;font-family:'SF Mono','Menlo','Consolas',monospace;font-size:7.5pt;color:#2a3f55;text-transform:uppercase;letter-spacing:0.1em;display:flex;justify-content:space-between;">
+          <span>Blueprint IT &middot; Shop OS Foundation</span>
+          <span>blueprintit.ai &middot; page <span class="pageNumber"></span></span>
+        </div>
+      </div>
+    `,
+  });
   await browser.close();
+  return pdfBytes;
+}
 
+async function generateCustomWelcomePdf(env: any, licenseKey: string): Promise<string> {
+  const pdfBytes = await renderWelcomePdfBytes(env, licenseKey);
   return arrayBufferToBase64(pdfBytes.buffer as ArrayBuffer);
 }

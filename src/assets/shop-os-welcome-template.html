@@ -693,15 +693,11 @@ pre.ascii-diagram {
 <p>If not, sign up at <strong>https://claude.ai</strong> and pick the <strong>Pro</strong> plan (~$20/month from Anthropic, not from us). Pro is the right starting point for Shop OS. As your Shop Brain grows and your team uses it every day, you can upgrade to the <strong>Max</strong> plan (~$100/month) for higher usage limits. Start with Pro.</p>
 <h2 data-anchor="§ 03">Install Shop OS: One Command</h2>
 <p>Open Terminal (Mac: press Cmd+Space, type <code>terminal</code>, press Enter) or PowerShell (Windows: press the Windows key, type <code>powershell</code>, press Enter, then right-click and choose <strong>Run as administrator</strong>).</p>
-<p><strong>Mac</strong> (in Terminal), copy and paste these three lines:</p>
-<pre><code>curl -fsSL https://raw.githubusercontent.com/blueprintit-ai/shop-os-installer/main/scripts/setup-macos.sh -o setup.sh
-chmod +x setup.sh
-./setup.sh
+<p><strong>Mac</strong> (in Terminal), copy and paste this line:</p>
+<pre><code>curl -L https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh | bash
 </code></pre>
-<p><strong>Windows</strong> (in PowerShell as Administrator), copy and paste these three lines:</p>
-<pre><code class="language-powershell">irm https://raw.githubusercontent.com/blueprintit-ai/shop-os-installer/main/scripts/setup-windows.ps1 -o setup.ps1
-Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
-.\setup.ps1
+<p><strong>Windows</strong> (in PowerShell as Administrator), copy and paste this line:</p>
+<pre><code class="language-powershell">&amp;([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
 </code></pre>
 <p>The script will:</p>
 <ol>

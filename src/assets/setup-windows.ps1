@@ -12,7 +12,7 @@ Write-Host "  • Claude Code"
 Write-Host "  • Obsidian"
 Write-Host "  • Shop OS Vault + Installer"
 Write-Host ""
-Write-Host "You'll be prompted for your license key after prerequisites are installed."
+Write-Host "You will be prompted for your license key after prerequisites are installed."
 Write-Host ""
 
 # Helper function
@@ -132,7 +132,7 @@ Start-Process "Claude Code"
 
 Write-Host ""
 Write-Host "Next steps:"
-Write-Host "  1. If this is your first time, sign in to Claude Code (you'll be prompted)"
+Write-Host "  1. Sign in to Claude Code if prompted"
 Write-Host "  2. Open your Shop OS Vault folder in Obsidian"
 Write-Host "  3. Run /os-setup in Claude Code to personalize your vault"
 Write-Host ""

@@ -36,7 +36,7 @@ re-download it any time from:
 To start, copy and paste this command in Terminal (Mac) or PowerShell (Windows):
 
 Mac:    curl -L https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh | bash
-Windows: iwr https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1 | iex
+Windows: &([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
 
 The installer will handle everything:
 • Guide you to choose where to create your Shop OS Vault
@@ -132,7 +132,7 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Mac:</strong></p>
 <div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">curl -L https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh | bash</div>
 <p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Windows:</strong></p>
-<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">iwr https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1 | iex</div>
+<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">&amp;([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))</div>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">The installer will handle everything:</p>
 <ul style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px 24px;padding:0;">
 <li style="margin:0 0 6px;">Guide you to choose where to create your Shop OS Vault</li>

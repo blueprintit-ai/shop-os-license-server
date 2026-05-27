@@ -397,8 +397,41 @@ export default {
         });
       }
 
-      // Serve welcome PDF from assets binding at the canonical /welcome.pdf URL.
+      // Serve welcome PDF at /welcome.pdf. With ?key=SHOP-XXXX-XXXX-XXXX,
+      // render the per-customer personalized PDF (same one attached to the
+      // welcome email) when the license exists. Otherwise serve the generic
+      // static PDF from the assets binding.
+      //
+      // The personalized render goes through Cloudflare Browser Rendering
+      // which is rate-limited and ~slow, so we cache the bytes in KV under
+      // `pdf:welcome:<licenseKey>` after the first render. PDFs are immutable
+      // per-customer, so no eviction strategy is needed.
       if (method === "GET" && path === "/welcome.pdf") {
+        const licenseKey = url.searchParams.get("key");
+        if (licenseKey && /^SHOP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/.test(licenseKey)) {
+          const record = await env.LICENSES.get(licenseKey, "json");
+          if (record) {
+            const cacheKey = `pdf:welcome:${licenseKey}`;
+            let pdfBytes: ArrayBuffer | null = await env.LICENSES.get(cacheKey, "arrayBuffer");
+            if (!pdfBytes) {
+              const rendered = await renderWelcomePdfBytes(env, licenseKey);
+              await env.LICENSES.put(cacheKey, rendered);
+              pdfBytes = rendered.buffer.slice(
+                rendered.byteOffset,
+                rendered.byteOffset + rendered.byteLength,
+              ) as ArrayBuffer;
+            }
+            return new Response(pdfBytes, {
+              status: 200,
+              headers: {
+                "Content-Type": "application/pdf",
+                "Content-Disposition": 'inline; filename="shop-os-welcome.pdf"',
+                "Cache-Control": "private, max-age=3600",
+                ...corsResponseHeaders(req),
+              },
+            });
+          }
+        }
         const asset = await env.ASSETS.fetch(new Request("https://placeholder/shop-os-welcome.pdf"));
         if (!asset.ok) return new Response("Not found", { status: 404 });
         return new Response(asset.body, {

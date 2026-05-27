@@ -306,6 +306,36 @@ async function handleList(req: Request, env: Env): Promise<Response> {
   return json(req, { ok: true, count: records.length, licenses: records });
 }
 
+// Public counter for the Founding 50 cohort. Returns paid+offset where offset
+// covers Glenn's 12 friend gift spots (those licenses should be issued with a
+// non-"founding-50" cohort so they aren't double-counted).
+const FOUNDING_50_OFFSET = 12;
+const FOUNDING_50_TOTAL = 50;
+
+async function handleFounding50Count(req: Request, env: Env): Promise<Response> {
+  let paidCount = 0;
+  try {
+    const list = await env.LICENSES.list({ limit: 1000 });
+    for (const k of list.keys) {
+      if (!k.name.startsWith("SHOP-")) continue;
+      const r = await env.LICENSES.get<LicenseRecord>(k.name, "json");
+      if (r && r.cohort === "founding-50") paidCount++;
+    }
+  } catch {
+    // Fall through with paidCount=0 so the page always renders something.
+  }
+  const redeemed = Math.min(paidCount + FOUNDING_50_OFFSET, FOUNDING_50_TOTAL);
+  const body = JSON.stringify({ ok: true, redeemed, total: FOUNDING_50_TOTAL });
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "public, max-age=60",
+      ...corsResponseHeaders(req),
+    },
+  });
+}
+
 // ----- router -----
 
 export default {
@@ -400,6 +430,7 @@ export default {
       if (path === "/revoke" && method === "POST") return handleRevoke(req, url, env);
       if (path === "/update-license" && method === "POST") return handleUpdateLicense(req, url, env);
       if (path === "/list" && method === "GET") return handleList(req, env);
+      if (path === "/founding50-redeemed" && method === "GET") return handleFounding50Count(req, env);
 
       if (req.method === "POST" && url.pathname === "/validate-coupon") {
         let body: { code?: string };

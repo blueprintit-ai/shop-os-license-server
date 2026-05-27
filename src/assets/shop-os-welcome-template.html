@@ -223,7 +223,10 @@ code {
 pre {
   background: #ede6d4;
   border-left: 2.5pt solid #1c6ea4;
-  padding: 10pt 12pt;
+  /* No right padding so the 116-char Windows install command fits on one
+     visual line — anything that pushes the URL to a second line trips the
+     glenn-15d copy-paste dash-drop bug. */
+  padding: 10pt 0 10pt 12pt;
   margin: 10pt 0;
   overflow: hidden;
   page-break-inside: avoid;
@@ -232,10 +235,20 @@ pre {
 pre code {
   background: transparent;
   padding: 0;
-  font-size: 9pt;
+  /* 7pt fits both the 99-char Mac install line AND the 116-char Windows line
+     on a single PDF line with margin to spare. Smaller than ideal for
+     readability, but the alternative is Chrome breaking the URL at the
+     glenn-15d hyphen and the PDF text layer dropping the dash on copy. */
+  font-size: 7pt;
   line-height: 1.5;
   white-space: pre-wrap;
-  word-wrap: break-word;
+  /* Customer tester reported pasting "glenn15d" instead of "glenn-15d" when
+     copying the install command out of the PDF. Root cause: word-wrap:
+     break-word lets Chrome break the URL at the hyphen, and the PDF text
+     layer ate the trailing dash on copy. keep-all + overflow-wrap:normal
+     forbids any break that isn't at whitespace. */
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 
 /* ---- Tables ---- */

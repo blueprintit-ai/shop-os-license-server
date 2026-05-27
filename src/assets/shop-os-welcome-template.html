@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Welcome to Shop OS</title>
+<style>
+/* ============================================================
+   Blueprint IT — Shop OS Foundation customer documents.
+   Visual language matches blueprintit.ai/shop-ossi:
+   warm paper base, blueprint grid overlay, cyan + rust accents,
+   node-cloud cover banner, "Blueprint IT" wordmark.
+============================================================ */
+
+:root {
+  --paper: #f4efe3;
+  --paper-2: #ede6d4;
+  --paper-line: #d9ceb0;
+  --ink: #0c1e2f;
+  --ink-soft: #2a3f55;
+  --ink-mute: #6a7788;
+  --cyan: #1c6ea4;
+  --cyan-soft: #2e8fc9;
+  --rust: #c2461f;
+  --gold: #b68a2c;
+}
+
+@page {
+  size: letter;
+  margin: 0.85in 0.75in 1.0in 0.75in;
+  background: #f4efe3;
+  @bottom-left {
+    content: "Blueprint IT  \00B7  Shop OS Foundation";
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 7.5pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #2a3f55;
+    border-top: 0.5pt solid #1c6ea4;
+    padding-top: 6pt;
+    vertical-align: top;
+  }
+  @bottom-right {
+    content: "blueprintit.ai  \00B7  page " counter(page);
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 7.5pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #2a3f55;
+    border-top: 0.5pt solid #1c6ea4;
+    padding-top: 6pt;
+    vertical-align: top;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* Warm paper background (no grid overlay — kept clean for readability). */
+html, body {
+  background-color: #f4efe3;
+  color: #0c1e2f;
+  font-family: Georgia, "Iowan Old Style", "Apple Garamond", serif;
+  font-size: 11pt;
+  line-height: 1.55;
+  margin: 0;
+  padding: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ---- Cover ---- */
+
+.cover {
+  border-bottom: 1.5pt solid #0c1e2f;
+  padding-bottom: 18pt;
+  margin-bottom: 24pt;
+}
+
+/* Node-cloud banner: SVG accent at the top of the cover.
+   Matches the live ParticleBrainCanvas on shop-ossi (lateral brain
+   silhouette, cyan body, gold edges, rust accents). Static SVG so
+   it renders in PDF and email without JS. */
+.cover-art {
+  width: 100%;
+  margin: -8pt 0 16pt;
+  opacity: 0.78;
+  line-height: 0;
+  border-bottom: 0.75pt solid #1c6ea4;
+  padding-bottom: 8pt;
+}
+.cover-art img {
+  width: 100%;
+  height: 105pt;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+.cover-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12pt;
+}
+
+.cover .wordmark {
+  font-family: Georgia, serif;
+  font-size: 13pt;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: #0c1e2f;
+}
+.cover .wordmark em {
+  font-style: italic;
+  color: #c2461f;
+  font-weight: 600;
+  margin-left: 0;
+}
+.cover .wordmark-tag {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #2a3f55;
+  margin-left: 10pt;
+  font-weight: 400;
+}
+
+.cover .doc-no {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 9pt;
+  color: #1c6ea4;
+  letter-spacing: 0.08em;
+}
+.cover .title {
+  font-family: Georgia, serif;
+  font-size: 28pt;
+  font-weight: 600;
+  margin-top: 10pt;
+  letter-spacing: -0.01em;
+  color: #0c1e2f;
+}
+.cover .tagline {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 8.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #1c6ea4;
+  margin-top: 8pt;
+}
+
+/* ---- Section structure ---- */
+
+h2 {
+  font-family: Georgia, serif;
+  font-size: 16pt;
+  font-weight: 600;
+  margin: 28pt 0 6pt 0;
+  page-break-after: avoid;
+  break-after: avoid;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  border-top: 1pt solid #1c6ea4;
+  padding-top: 14pt;
+  color: #0c1e2f;
+}
+h2::before {
+  content: attr(data-anchor) "\A";
+  display: block;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 8pt;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #1c6ea4;
+  font-weight: 500;
+  margin-bottom: 4pt;
+  white-space: pre;
+}
+h3 {
+  font-family: Georgia, serif;
+  font-size: 12.5pt;
+  font-weight: 600;
+  margin: 18pt 0 4pt 0;
+  page-break-after: avoid;
+  break-after: avoid;
+  color: #0c1e2f;
+}
+h4 {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 9pt;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 14pt 0 4pt 0;
+  color: #2a3f55;
+}
+
+p { margin: 0 0 9pt 0; }
+strong { font-weight: 600; color: #0c1e2f; }
+em { font-style: italic; color: #1c6ea4; }
+
+a {
+  color: #1c6ea4;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 0.5pt;
+}
+
+ul, ol { margin: 0 0 10pt 18pt; padding: 0; }
+li { margin: 0 0 4pt 0; }
+
+/* ---- Code / monospace ---- */
+
+code {
+  font-family: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-size: 9.5pt;
+  background: #ede6d4;
+  padding: 1pt 4pt;
+  border-radius: 2pt;
+  color: #0c1e2f;
+}
+
+pre {
+  background: #ede6d4;
+  border-left: 2.5pt solid #1c6ea4;
+  padding: 10pt 12pt;
+  margin: 10pt 0;
+  overflow: hidden;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 9pt;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* ---- Tables ---- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10pt 0;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+th {
+  text-align: left;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 8.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  padding: 6pt 8pt;
+  border-bottom: 1.5pt solid #0c1e2f;
+  background: transparent;
+  color: #1c6ea4;
+}
+td {
+  padding: 6pt 8pt;
+  border-bottom: 0.5pt solid #d9ceb0;
+  vertical-align: top;
+}
+tr:last-child td { border-bottom: none; }
+
+/* ---- Callouts (rendered from blockquotes) ---- */
+
+blockquote {
+  border-left: 3pt solid #1c6ea4;
+  background: #ede6d4;
+  margin: 12pt 0;
+  padding: 10pt 14pt;
+  font-family: Georgia, serif;
+  font-size: 10.5pt;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  color: #0c1e2f;
+}
+blockquote p:last-child { margin-bottom: 0; }
+
+/* ---- Horizontal rule = section divider ---- */
+
+hr {
+  border: none;
+  border-top: 1px solid #1c6ea4;
+  margin: 24pt 0;
+  opacity: 0.45;
+}
+
+/* ---- Image / ASCII diagram boxes ---- */
+
+pre.ascii-diagram {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  background: #ede6d4;
+  font-size: 8.5pt;
+  line-height: 1.35;
+}
+
+/* ---- Signature block ---- */
+
+.signature {
+  margin-top: 10pt;
+  line-height: 1.5;
+  font-family: Georgia, serif;
+}
+
+/* ---- Page break helpers ---- */
+
+.page-break { page-break-before: always; break-before: page; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="cover-art">
+    <img src="../assets/node-cloud.svg" alt="" />
+  </div>
+  <div class="cover-meta">
+    <span class="wordmark">Blueprint<em>IT</em><span class="wordmark-tag">Schematics for the AI-native business</span></span>
+    <span class="doc-no">DOC § SOS-WELCOME-01</span>
+  </div>
+  <div class="title">Welcome to Shop OS</div>
+  <div class="tagline">Your license, install steps, and first session</div>
+</div>
+
+<p>Thanks for picking up Shop OS Foundation. This document walks you through everything you need to know to install, run your first session, and start using Shop OS in your business.</p>
+<p>Installation takes about 5 minutes total (depending on your internet speed). It's one command that installs everything automatically.</p>
+<h2 data-anchor="§ 01">Your license key</h2>
+<pre><code>SHOP-XXXX-YYYY-ZZZZ
+</code></pre>
+<p>Save it somewhere safe (1Password, a sticky note, a folder in your inbox). You will paste it once during install. We will never ask you to re-enter it after that.</p>
+<h2 data-anchor="§ 02">Before you start: Claude Pro subscription</h2>
+<p><strong>Already have Claude Pro or Max?</strong> You're all set. Skip to the next section.</p>
+<p>If not, sign up at <strong>https://claude.ai</strong> and pick the <strong>Pro</strong> plan (~$20/month from Anthropic, not from us). Pro is the right starting point for Shop OS. As your Shop Brain grows and your team uses it every day, you can upgrade to the <strong>Max</strong> plan (~$100/month) for higher usage limits. Start with Pro.</p>
+<h2 data-anchor="§ 03">Install Shop OS: One Command</h2>
+<p>Open Terminal (Mac: press Cmd+Space, type <code>terminal</code>, press Enter) or PowerShell (Windows: press the Windows key, type <code>powershell</code>, press Enter, then right-click and choose <strong>Run as administrator</strong>).</p>
+<p><strong>Mac</strong> (in Terminal), copy and paste these three lines:</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/blueprintit-ai/shop-os-installer/main/scripts/setup-macos.sh -o setup.sh
+chmod +x setup.sh
+./setup.sh
+</code></pre>
+<p><strong>Windows</strong> (in PowerShell as Administrator), copy and paste these three lines:</p>
+<pre><code class="language-powershell">irm https://raw.githubusercontent.com/blueprintit-ai/shop-os-installer/main/scripts/setup-windows.ps1 -o setup.ps1
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+.\setup.ps1
+</code></pre>
+<p>The script will:</p>
+<ol>
+<li>Install Node.js (if you don't have it)</li>
+<li>Install Claude Code (if you don't have it)</li>
+<li>Install Obsidian (if you don't have it)</li>
+<li>Prompt you for your license key</li>
+<li>Open a folder picker - click to choose where to install, then enter a name for your vault (default: "Shop OS Vault")</li>
+</ol>
+<p>The script creates the vault folder for you, so you don't need to make it yourself. Just pick a location when prompted:
+- <strong>One computer only?</strong> Your home folder, Documents, or Desktop.
+- <strong>Multiple computers?</strong> Put it inside Dropbox, iCloud Drive, or OneDrive so it syncs across your machines.</p>
+<p>The whole thing takes about 5 minutes depending on your internet speed.</p>
+<h2 data-anchor="§ 04">After install: your first session</h2>
+<p>The installer prints <code>✓ Shop OS installation complete!</code> along with the exact next steps. Here they are spelled out.</p>
+<h3>Step 1. Open your vault in Obsidian</h3>
+<p>Launch Obsidian. Click "Open folder as vault". You may need to click the small folder icon in the corner first to access this option.</p>
+<p>Select the "Shop OS Vault" folder the installer created in your home directory. Click Open.</p>
+<p>You will now see your vault in Obsidian's main window. There is not much in it yet, just a <code>CLAUDE.md</code> file and a <code>Raw/</code> folder. That is about to change.</p>
+<h3>Step 2. Run the onboarding interview</h3>
+<p>At the Claude prompt, type:</p>
+<pre><code>/os-setup
+</code></pre>
+<p>This kicks off a 10-minute onboarding interview that asks about your shop name, owner, key staff, services, and daily routines. As you answer, Obsidian's file list on the left side will fill up with the notes Claude is creating for you. You can watch your vault populate in real time.</p>
+<p>By the end of the interview, you have a configured Shop OS vault ready to use. We send a follow-up document called "Your First Week with Shop OS" that walks you through what to do next.</p>
+<h2 data-anchor="§ 05">Letting your team use Shop OS Chat</h2>
+<p>Inside your vault folder, alongside <code>CLAUDE.md</code> and <code>Raw/</code>, the installer also dropped a file called <code>Shop OS Chat.command</code> (Mac) or <code>Shop OS Chat.bat</code> (Windows). This is the read-only chat your team can use to ask questions about anything in the vault. Suppliers, past jobs, customer history, contract terms, all searchable from a simple chat window.</p>
+<h3>How it works</h3>
+<p>Anyone in your shop double-clicks the file. A small terminal window opens (this is normal, it is the chat server running). The default browser opens to <code>localhost</code> with the chat page.</p>
+<p>The first time the person uses it on this computer, the page asks for their name. From then on, the browser remembers and goes straight to the chat. When they end a conversation (either by clicking "End conversation" or closing the tab), the full transcript saves into a <code>Chats/</code> folder inside your vault. You can read those later from Obsidian or ask Claude Code "what did Marco ask about the Smith job last week?"</p>
+<h3>What it can and cannot do</h3>
+<p>The chat is <strong>read-only</strong>. It can answer questions, search the vault, summarize anything stored there. It cannot create, edit, or delete files. If someone asks it to "add a note about today's call," it will politely say it cannot, and direct them to ask you or to use Claude Code.</p>
+<p>This is on purpose. Your team gets fast answers without any risk of accidentally changing customer records, supplier lists, or contracts. You stay the one with write access via Claude Code.</p>
+<h3>First launch is slower</h3>
+<p>The very first launch takes about 20 to 30 seconds while the chat downloads from GitHub. Every launch after that is instant.</p>
+<h2 data-anchor="§ 06">Need help?</h2>
+<p>Reply to your welcome email. We will respond ASAP.</p>
+<p>Common first-time issues, already documented:</p>
+<ul>
+<li><strong><code>node: command not found</code></strong> during the install command means you skipped step 2 of the prerequisites. Install Node.js and try again.</li>
+<li><strong>Claude Code app will not launch or cannot find your vault</strong> means you skipped step 3 of the prerequisites or signed in with a different account. Reinstall from claude.ai/code and sign in with the same Claude account from step 1.</li>
+<li><strong><code>License rejected</code></strong> means the key was mistyped. Double-check you pasted the full key including the <code>SHOP-</code> prefix and all three groups of four characters.</li>
+<li><strong>Anything else</strong> gets answered by reply email, usually with a 15-minute screen-share to fix the issue live.</li>
+</ul>
+<p>Welcome aboard.</p>
+<p class="signature">
+<strong>Glenn Chua</strong>, Founder<br>
+Blueprint IT, LLC<br>
+<a href="mailto:glenn@blueprintit.ai">glenn@blueprintit.ai</a><br>
+<a href="https://blueprintit.ai">www.blueprintit.ai</a>
+</p>
+
+</body>
+</html>

@@ -10,6 +10,10 @@ compatibility_flags = ["nodejs_compat"]
 binding = "LICENSES"
 id = "cfad69c7ae204758b6e68542d2d50dbd"
 
+# Browser Rendering for per-customer PDF generation
+[[browser]]
+binding = "BROWSER"
+
 # Secrets (set via `wrangler secret put ADMIN_TOKEN`, do NOT commit):
 # - ADMIN_TOKEN: bearer token required for /issue, /revoke, /list endpoints
 

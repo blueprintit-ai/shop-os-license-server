@@ -38,6 +38,9 @@ export interface Env {
   // Assets binding — always present once [assets] is configured in wrangler.toml.
   ASSETS: Fetcher;
 
+  // Browser Rendering for per-customer PDF generation
+  BROWSER: Fetcher;
+
   // Stripe (test mode for now; production keys added in Task 25)
   STRIPE_SECRET_KEY_TEST?: string;
   STRIPE_WEBHOOK_SECRET_TEST?: string;

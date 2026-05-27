@@ -1,3 +1,4 @@
+import puppeteer from "@cloudflare/puppeteer";
 import { issueLicense, markEmailSent, LicenseRecord } from "../license-core";
 import { sendWelcomeEmail, ResendSendInput, ResendResponse } from "../email/resend";
 
@@ -102,7 +103,7 @@ export async function handlePaymentSuccess(
   if (!license.metadata?.welcomeEmailSentAt) {
     if (env.RESEND_API_KEY) {
       const [welcomeB64, firstWeekB64] = await Promise.all([
-        loadAssetBase64(env.ASSETS, "shop-os-welcome.pdf"),
+        generateCustomWelcomePdf(env, license.key),
         loadAssetBase64(env.ASSETS, "shop-os-first-week-guide.pdf"),
       ]);
       const send = await sendEmail(env.RESEND_API_KEY, {
@@ -150,4 +151,18 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   let s = "";
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
   return btoa(s);
+}
+
+async function generateCustomWelcomePdf(env: any, licenseKey: string): Promise<string> {
+  const resp = await env.ASSETS.fetch(new Request("https://placeholder/shop-os-welcome-template.html"));
+  let html = await resp.text();
+  html = html.replace("SHOP-XXXX-YYYY-ZZZZ", licenseKey);
+
+  const browser = await puppeteer.launch(env.BROWSER);
+  const page = await browser.newPage();
+  await page.setContent(html, { waitUntil: "networkidle0" });
+  const pdfBytes = await page.pdf({ format: "Letter", printBackground: true });
+  await browser.close();
+
+  return arrayBufferToBase64(pdfBytes.buffer as ArrayBuffer);
 }

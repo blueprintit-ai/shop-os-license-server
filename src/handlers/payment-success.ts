@@ -220,5 +220,14 @@ export async function renderWelcomePdfBytes(env: any, licenseKey: string): Promi
 
 async function generateCustomWelcomePdf(env: any, licenseKey: string): Promise<string> {
   const pdfBytes = await renderWelcomePdfBytes(env, licenseKey);
+  // Pre-warm the cache read by GET /welcome.pdf?key=... so the customer's
+  // thank-you page never has to wait on a cold Browser API render. Best-effort:
+  // if this fails the email still ships and the public endpoint will re-render
+  // and cache on first access.
+  try {
+    await env.LICENSES.put(`pdf:welcome:${licenseKey}`, pdfBytes);
+  } catch {
+    // swallow: email path must not fail because of a cache write
+  }
   return arrayBufferToBase64(pdfBytes.buffer as ArrayBuffer);
 }

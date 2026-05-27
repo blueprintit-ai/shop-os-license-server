@@ -115,8 +115,19 @@ Write-Host ""
 Write-Host "Installing Shop OS to: $vaultPath" -ForegroundColor Cyan
 Write-Host ""
 
-# 6. Run Shop OS installer with license key and vault path
-& npx -y @blueprintit/shop-os-install@latest --license "$licenseKey" --vault "$vaultPath" --yes
+# 6. Run Shop OS installer with license key and vault path.
+# Use Start-Process -Wait so PowerShell waits for the FULL process tree
+# (npx.cmd -> cmd.exe -> node.exe). The PowerShell `&` operator on .cmd files
+# can return before grandchildren finish, causing Set-Location below to run
+# while the vault folder is still being created.
+$installerArgs = @("-y", "@blueprintit/shop-os-install@latest", "--license", $licenseKey, "--vault", $vaultPath, "--yes")
+$proc = Start-Process -FilePath "npx.cmd" -ArgumentList $installerArgs -NoNewWindow -Wait -PassThru
+if ($proc.ExitCode -ne 0) {
+  Write-Host ""
+  Write-Host "✗ Installer failed with exit code $($proc.ExitCode)." -ForegroundColor Red
+  Write-Host "Re-run the setup command, or contact support if it persists." -ForegroundColor Red
+  exit 1
+}
 
 Write-Host ""
 Write-Host "=========================================" -ForegroundColor Cyan
@@ -132,6 +143,12 @@ Start-Sleep -Seconds 1
 
 # Refresh PATH so freshly-installed `claude` is found in this session
 $env:PATH = [Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH","User")
+
+if (-not (Test-Path -LiteralPath $vaultPath)) {
+  Write-Host "✗ Vault folder not found at: $vaultPath" -ForegroundColor Red
+  Write-Host "Installer reported success but the folder is missing. Open it manually." -ForegroundColor Yellow
+  exit 1
+}
 
 Set-Location -LiteralPath $vaultPath
 claude

@@ -1,6 +1,14 @@
 import puppeteer from "@cloudflare/puppeteer";
 import { issueLicense, markEmailSent, LicenseRecord } from "../license-core";
-import { sendWelcomeEmail, ResendSendInput, ResendResponse } from "../email/resend";
+import {
+  sendWelcomeEmail,
+  sendConsultationEmail,
+  ResendSendInput,
+  ResendConsultationSendInput,
+  ResendResponse,
+} from "../email/resend";
+
+export type ProductType = "foundation" | "consultation";
 
 export interface PaymentSuccessInput {
   paymentProvider: "stripe" | "paypal";
@@ -11,6 +19,7 @@ export interface PaymentSuccessInput {
   promoCode?: string;
   affiliate?: string | null;
   discountAmount?: number;  // cents
+  productType?: ProductType; // defaults to "foundation" for backward compat
 }
 
 // Promo codes that automatically grant lifetime-updates entitlement.
@@ -28,15 +37,21 @@ export function deriveFlagsFromPromo(
 }
 
 export interface PaymentSuccessResult {
-  license: LicenseRecord;
+  // license is null for consultation purchases (no entitlement to grant).
+  license: LicenseRecord | null;
   alreadyIssued: boolean;
   emailResult: { ok: boolean; error?: string };
 }
 
 type SendEmailFn = (apiKey: string, input: ResendSendInput) => Promise<ResendResponse>;
+type SendConsultationEmailFn = (
+  apiKey: string,
+  input: ResendConsultationSendInput,
+) => Promise<ResendResponse>;
 
 export interface PaymentSuccessOptions {
   sendEmail?: SendEmailFn;
+  sendConsultation?: SendConsultationEmailFn;
 }
 
 export async function handlePaymentSuccess(
@@ -44,10 +59,20 @@ export async function handlePaymentSuccess(
     LICENSES: KVNamespace;
     RESEND_API_KEY?: string;
     ASSETS: Fetcher;
+    CALENDLY_CONSULTATION_URL?: string;
   },
   input: PaymentSuccessInput,
   options: PaymentSuccessOptions = {}
 ): Promise<PaymentSuccessResult> {
+  const productType: ProductType = input.productType ?? "foundation";
+
+  // Consultation branch: no license issued, just the Calendly-link email.
+  // Same idempotency key shape as Foundation so the existing /payment-status
+  // endpoint and webhook-retry logic work unchanged.
+  if (productType === "consultation") {
+    return handleConsultationSuccess(env, input, options);
+  }
+
   const sendEmail = options.sendEmail ?? sendWelcomeEmail;
   const idemKey = `payment:${input.paymentProvider}:${input.paymentId}`;
   const existingKey = await env.LICENSES.get(idemKey);
@@ -128,6 +153,68 @@ export async function handlePaymentSuccess(
   }
 
   return { license, alreadyIssued, emailResult };
+}
+
+// Handle a Consultation purchase: no license issuance, just send the
+// Calendly-link email. Idempotent via the same KV key shape as Foundation.
+async function handleConsultationSuccess(
+  env: {
+    LICENSES: KVNamespace;
+    RESEND_API_KEY?: string;
+    CALENDLY_CONSULTATION_URL?: string;
+  },
+  input: PaymentSuccessInput,
+  options: PaymentSuccessOptions = {},
+): Promise<PaymentSuccessResult> {
+  const sendConsultation = options.sendConsultation ?? sendConsultationEmail;
+  const idemKey = `payment:${input.paymentProvider}:${input.paymentId}`;
+  const sentinel = `consultation-${input.email || input.paymentId}`;
+
+  const existing = await env.LICENSES.get(idemKey);
+  if (existing) {
+    // Already processed. Don't re-send the email; webhook retries are noise.
+    return { license: null, alreadyIssued: true, emailResult: { ok: true } };
+  }
+
+  // Write the idempotency record FIRST so a racing retry sees it. The email
+  // send below is best-effort: if Resend fails, the customer still has the
+  // calendar link in their Stripe receipt and Glenn can resend manually from
+  // the admin dashboard.
+  await env.LICENSES.put(idemKey, sentinel);
+
+  if (!env.RESEND_API_KEY) {
+    return {
+      license: null,
+      alreadyIssued: false,
+      emailResult: { ok: false, error: "RESEND_API_KEY not configured." },
+    };
+  }
+  if (!env.CALENDLY_CONSULTATION_URL) {
+    return {
+      license: null,
+      alreadyIssued: false,
+      emailResult: { ok: false, error: "CALENDLY_CONSULTATION_URL not configured." },
+    };
+  }
+
+  const customerName = input.customer && input.customer !== "Customer"
+    ? input.customer
+    : (input.email ? input.email.split("@")[0] : "there");
+
+  const send = await sendConsultation(env.RESEND_API_KEY, {
+    to: input.email,
+    customerName,
+    calendlyUrl: env.CALENDLY_CONSULTATION_URL,
+  });
+
+  if (send.error) {
+    return {
+      license: null,
+      alreadyIssued: false,
+      emailResult: { ok: false, error: send.error.message },
+    };
+  }
+  return { license: null, alreadyIssued: false, emailResult: { ok: true } };
 }
 
 // Cache encoded asset bytes at module scope. The bundled PDFs never change

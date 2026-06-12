@@ -11,6 +11,7 @@ echo "This script will install:"
 echo "  • Homebrew (if needed)"
 echo "  • Node.js"
 echo "  • Git"
+echo "  • Python 3"
 echo "  • Claude Code"
 echo "  • Obsidian"
 echo "  • Shop OS Vault + Installer"
@@ -58,6 +59,17 @@ if ! command -v git &> /dev/null; then
   brew install git
 else
   echo "✓ Git found"
+fi
+
+# 2c. Check/install Python 3
+# bp-digest uses Python 3 + MarkItDown to read PDFs, Word docs, and spreadsheets
+# dropped into the Raw/ inbox. macOS ships Python 3 on recent versions but we
+# install explicitly so a fresh or stripped machine never silently fails.
+if command -v python3 &> /dev/null; then
+  echo "✓ Python 3 found"
+else
+  echo "📦 Installing Python 3 via Homebrew..."
+  brew install python3
 fi
 
 # 3. Check/install Claude Code

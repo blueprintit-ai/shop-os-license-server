@@ -64,6 +64,8 @@ export async function handlePayPalWebhook(
     promoCode: metadata.promoCode,
     affiliate: metadata.affiliate ?? null,
     discountAmount: metadata.discountAmount ? parseInt(metadata.discountAmount, 10) : undefined,
+    // PayPal flow is Foundation-only — Consultation is Stripe-only in v1.
+    productType: "foundation",
   });
   return new Response("ok", { status: 200 });
 }

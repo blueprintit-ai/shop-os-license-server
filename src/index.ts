@@ -23,6 +23,7 @@
  */
 
 import { ADMIN_HTML } from "./admin-html.js";
+import { INSTALLS_HTML } from "./installs-html.js";
 import { LicenseRecord, IssueLicenseInput, issueLicense, updateLicenseFlags } from "./license-core.js";
 import { StripeClient } from "./payments/stripe.js";
 import { PayPalClient } from "./payments/paypal.js";
@@ -54,6 +55,16 @@ export interface Env {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_ID?: string;
 
+  // Per-product Stripe price IDs (live values via `wrangler secret put`).
+  // FOUNDATION falls back to the legacy STRIPE_PRICE_ID / *_TEST for backward
+  // compat with the existing /shop-ossi flow if the new secret isn't set.
+  // CONSULTATION has no legacy fallback; required for /products consultation buys.
+  STRIPE_PRICE_ID_FOUNDATION?: string;
+  STRIPE_PRICE_ID_CONSULTATION?: string;
+
+  // Calendly booking URL sent in the consultation welcome email
+  CALENDLY_CONSULTATION_URL?: string;
+
   // PayPal
   PAYPAL_CLIENT_ID_TEST?: string;
   PAYPAL_CLIENT_SECRET_TEST?: string;
@@ -67,6 +78,53 @@ export interface Env {
 
   // Resend
   RESEND_API_KEY?: string;
+}
+
+// InstallLog is written by the Windows/Mac installer on success or error.
+// Keyed in KV as install-log:{licenseKey}:{timestamp_ms}, TTL 180 days.
+interface InstallLog {
+  license_key: string;
+  timestamp: string;
+  status: "success" | "error" | "retry";
+  error_message?: string;
+  step?: string;
+  machine?: { os?: string; ps_version?: string; username?: string };
+}
+
+async function handleInstallLog(req: Request, env: Env): Promise<Response> {
+  let body: InstallLog;
+  try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
+  if (!body.license_key || !body.status || !["success", "error", "retry"].includes(body.status)) {
+    return json(req, { error: "license_key and status are required (success | error | retry)" }, 400);
+  }
+  const timestamp = new Date().toISOString();
+  const log: InstallLog = {
+    license_key: body.license_key,
+    timestamp,
+    status: body.status,
+    ...(body.error_message ? { error_message: body.error_message } : {}),
+    ...(body.step ? { step: body.step } : {}),
+    ...(body.machine ? { machine: body.machine } : {}),
+  };
+  const kvKey = `install-log:${body.license_key}:${Date.now()}`;
+  await env.LICENSES.put(kvKey, JSON.stringify(log), { expirationTtl: 180 * 24 * 60 * 60 });
+  return json(req, { ok: true, logged_at: timestamp });
+}
+
+async function handleAdminInstallLogs(req: Request, env: Env): Promise<Response> {
+  const adminCheck = await requireAdmin(req, env);
+  if (adminCheck) return adminCheck;
+  const url = new URL(req.url);
+  const filterKey = url.searchParams.get("key");
+  const prefix = filterKey ? `install-log:${filterKey}:` : "install-log:";
+  const list = await env.LICENSES.list({ prefix, limit: 500 });
+  const logs: InstallLog[] = [];
+  for (const k of list.keys) {
+    const entry = await env.LICENSES.get<InstallLog>(k.name, "json");
+    if (entry) logs.push(entry);
+  }
+  logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return json(req, { ok: true, count: logs.length, logs });
 }
 
 // IssueRequest is the shape of the admin POST /issue JSON body.
@@ -518,6 +576,17 @@ export default {
           },
         });
       }
+      if ((path === "/admin/installs" || path === "/admin/installs/") && method === "GET") {
+        return new Response(INSTALLS_HTML, {
+          status: 200,
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+            "x-frame-options": "DENY",
+            "referrer-policy": "no-referrer",
+          },
+        });
+      }
       if (path === "/validate" && method === "GET") return handleValidate(req, url, env, false);
       if (path === "/refresh" && method === "GET") return handleValidate(req, url, env, true);
       if (path === "/issue" && method === "POST") return handleIssue(req, env);
@@ -542,21 +611,47 @@ export default {
       }
 
       if (req.method === "POST" && url.pathname === "/create-stripe-checkout-session") {
-        type Body = { email: string; code?: string };
+        type Body = {
+          email?: string;
+          code?: string;
+          productType?: "foundation" | "consultation";
+        };
         let body: Body;
         try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
-        if (!body.email) return json(req, { error: "Email is required." }, 400);
+
+        // productType defaults to "foundation" so the existing PurchaseSection on
+        // /shop-ossi (which doesn't send the field) keeps working unchanged.
+        const productType = body.productType ?? "foundation";
+        if (productType !== "foundation" && productType !== "consultation") {
+          return json(req, { error: "productType must be 'foundation' or 'consultation'." }, 400);
+        }
+
+        // Email is required for Foundation (we pre-collect it before checkout to
+        // pass to Stripe). For Consultation we let Stripe Checkout collect it
+        // inline since there's no coupon flow to pre-validate against.
+        if (productType === "foundation" && !body.email) {
+          return json(req, { error: "Email is required." }, 400);
+        }
 
         try {
           const stripe = getStripe(env);
-          const priceId = env.STRIPE_PRICE_ID ?? env.STRIPE_PRICE_ID_TEST;
-          if (!priceId) return json(req, { error: "STRIPE_PRICE_ID not configured." }, 500);
+          const priceId = productType === "consultation"
+            ? env.STRIPE_PRICE_ID_CONSULTATION
+            : (env.STRIPE_PRICE_ID_FOUNDATION ?? env.STRIPE_PRICE_ID ?? env.STRIPE_PRICE_ID_TEST);
+          if (!priceId) {
+            const envName = productType === "consultation"
+              ? "STRIPE_PRICE_ID_CONSULTATION"
+              : "STRIPE_PRICE_ID_FOUNDATION";
+            return json(req, { error: `${envName} not configured.` }, 500);
+          }
 
           let promotionCodeId: string | undefined;
           let promoCode: string | undefined;
           let affiliate: string | null = null;
 
-          if (body.code) {
+          // Coupons only apply to Foundation in v1; Consultation has no coupon
+          // flow yet (see spec non-goals).
+          if (productType === "foundation" && body.code) {
             const r = await validateCoupon(stripe, body.code);
             if (!r.valid) return json(req, { error: r.error }, 400);
             promotionCodeId = r.promotionCodeId;
@@ -564,14 +659,25 @@ export default {
             affiliate = r.affiliate ?? null;
           }
 
+          // Pick the right redirect surface per product so the customer lands
+          // on the page that knows how to render their post-purchase state.
+          const successUrl = productType === "consultation"
+            ? `${redirectBase(req)}/products/thank-you?session_id={CHECKOUT_SESSION_ID}&product=consultation`
+            : `${redirectBase(req)}/shop-ossi/thank-you?session_id={CHECKOUT_SESSION_ID}`;
+          const cancelUrl = productType === "consultation"
+            ? `${redirectBase(req)}/products`
+            : `${redirectBase(req)}/shop-ossi#purchase`;
+          const source = productType === "consultation" ? "products" : "shop-ossi";
+
           const session = await stripe.createCheckoutSession({
             priceId,
             customerEmail: body.email,
             promotionCodeId,
-            successUrl: `${redirectBase(req)}/shop-ossi/thank-you?session_id={CHECKOUT_SESSION_ID}`,
-            cancelUrl: `${redirectBase(req)}/shop-ossi#purchase`,
+            successUrl,
+            cancelUrl,
             metadata: {
-              source: "shop-ossi",
+              source,
+              productType,
               ...(promoCode ? { promoCode } : {}),
               ...(affiliate ? { affiliate } : {}),
             },
@@ -662,8 +768,14 @@ export default {
             promoCode: metadata.promoCode,
             affiliate: metadata.affiliate ?? null,
             discountAmount: metadata.discountAmount ? parseInt(metadata.discountAmount, 10) : undefined,
+            // PayPal flow is Foundation-only — Consultation is Stripe-only in v1.
+            productType: "foundation",
           });
 
+          // license is always non-null on the Foundation branch.
+          if (!result.license) {
+            return json(req, { error: "License issuance failed unexpectedly." }, 500);
+          }
           return json(req, { license: result.license.key, alreadyIssued: result.alreadyIssued });
         } catch (e) {
           return json(req, { error: (e as Error).message }, 500);
@@ -714,6 +826,14 @@ export default {
             ...corsResponseHeaders(req),
           },
         });
+      }
+
+      // Installer telemetry — public write, admin read
+      if (method === "POST" && path === "/install-log") {
+        return handleInstallLog(req, env);
+      }
+      if (method === "GET" && path === "/admin/install-logs") {
+        return handleAdminInstallLogs(req, env);
       }
 
       return json(req, { error: "not found", path, method }, 404);

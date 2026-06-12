@@ -11,11 +11,11 @@ A small Cloudflare Worker that issues, validates, and revokes Shop OS license ke
 
 ## What it does
 
-- **`GET /validate?key=...`** — used by the npx installer when a customer pastes their key. Returns customer info + entitlements if the key is valid.
-- **`GET /refresh?key=...`** — used by Shop OS skills periodically to confirm the license is still active. Bumps `last_seen` and returns the same shape as `/validate`.
-- **`POST /issue`** — admin endpoint. Generates a new key when a customer pays. Called from a Stripe webhook later, or manually via `scripts/issue-license.sh`.
-- **`POST /revoke?key=...`** — admin endpoint. Marks a key as cancelled. Subsequent `/validate` calls return 403.
-- **`GET /list`** — admin endpoint. Returns all licenses (paginated up to 1000).
+- **`GET /validate?key=...`**: used by the npx installer when a customer pastes their key. Returns customer info + entitlements if the key is valid.
+- **`GET /refresh?key=...`**: used by Shop OS skills periodically to confirm the license is still active. Bumps `last_seen` and returns the same shape as `/validate`.
+- **`POST /issue`**: admin endpoint. Generates a new key when a customer pays. Called from a Stripe webhook later, or manually via `scripts/issue-license.sh`.
+- **`POST /revoke?key=...`**: admin endpoint. Marks a key as cancelled. Subsequent `/validate` calls return 403.
+- **`GET /list`**: admin endpoint. Returns all licenses (paginated up to 1000).
 
 ## One-time setup (about 30 minutes)
 
@@ -251,3 +251,5 @@ Cloudflare Workers free tier:
 - Unlimited KV writes (within reason)
 
 For 200 Shop OS customers each validating once a week, that is roughly 30 reads per day. The free tier covers this 30x over. **Expected monthly cost: $0.**
+
+<span style="background-color:#F4EFE3; color:#020309; padding:2px 8px; border-radius:3px; font-size:0.85em;">🤖 Blueprint IT Vault Operator, last edited: 2026-05-28T00:00:00Z</span>

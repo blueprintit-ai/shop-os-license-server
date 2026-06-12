@@ -1,0 +1,124 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`consultation-welcome-template > HTML body matches the expected shape (snapshot) 1`] = `
+"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your Blueprint IT consultation</title>
+</head>
+<body style="margin:0;padding:0;background:#f4efe3;color:#0c1e2f;font-family:Georgia,'Iowan Old Style',serif;-webkit-font-smoothing:antialiased;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#f4efe3;">
+<tr><td align="center" style="padding:32px 16px;">
+
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;width:100%;">
+
+<!-- Top cyan rule -->
+<tr><td style="border-top:3px solid #1c6ea4;height:0;line-height:0;font-size:0;">&nbsp;</td></tr>
+
+<!-- Wordmark + doc number -->
+<tr><td style="padding:14px 0 18px;border-bottom:1px solid #d9ceb0;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+<tr>
+<td style="font-family:Georgia,serif;font-size:15px;font-weight:600;color:#0c1e2f;letter-spacing:-0.005em;">Blueprint<em style="font-style:italic;color:#c2461f;font-weight:600;">IT</em><span style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#2a3f55;font-weight:400;font-style:normal;margin-left:10px;">&nbsp;&nbsp;Schematics for the AI-native business</span></td>
+<td align="right" style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.4px;color:#1c6ea4;white-space:nowrap;">DOC § CONSULT-WELCOME-01</td>
+</tr>
+</table>
+</td></tr>
+
+<!-- Title + tagline -->
+<tr><td style="padding:24px 0 4px;">
+<h1 style="font-family:Georgia,serif;font-size:28px;font-weight:600;margin:0;color:#0c1e2f;letter-spacing:-0.01em;line-height:1.1;">Your consultation is booked</h1>
+<div style="font-family:Menlo,'SF Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:2.4px;color:#1c6ea4;margin-top:8px;">Pick a time and we will meet there</div>
+</td></tr>
+
+<!-- Greeting -->
+<tr><td style="padding:22px 0 0;">
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 12px;">Hi Marco,</p>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 4px;">Thanks for booking a consultation. Pick the hour that works for you, and Calendly will handle the rest.</p>
+</td></tr>
+
+<!-- § 01 Calendly CTA -->
+<tr><td style="padding:28px 0 0;">
+<div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 01 &nbsp;·&nbsp; Pick a time</div>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 16px;">Click below to see open slots in your local time zone:</p>
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 12px;">
+<tr><td style="background:#1c6ea4;border-radius:2px;">
+<a href="https://calendly.com/blueprintit/1-hour-meeting" style="display:inline-block;padding:14px 24px;font-family:Menlo,'SF Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#f4efe3;text-decoration:none;font-weight:600;">Book your consultation &rarr;</a>
+</td></tr>
+</table>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;font-style:italic;">If the button does not work, paste this URL into your browser: <a href="https://calendly.com/blueprintit/1-hour-meeting" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;font-style:normal;">https://calendly.com/blueprintit/1-hour-meeting</a></p>
+</td></tr>
+
+<!-- § 02 What happens next -->
+<tr><td style="padding:28px 0 0;">
+<div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 02 &nbsp;·&nbsp; What happens next</div>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 8px;">When you book, Calendly will email you a calendar invite with a video call link. If you would rather meet in person and you are near St. Louis, mention it in the booking form and we will work it out.</p>
+</td></tr>
+
+<!-- § 03 Help me prep -->
+<tr><td style="padding:28px 0 0;">
+<div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 03 &nbsp;·&nbsp; Help me prep</div>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 8px;">A few things, optional but useful:</p>
+<ul style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px 24px;padding:0;">
+<li style="margin:0 0 6px;">What you are hoping to walk away with</li>
+<li style="margin:0 0 6px;">One specific bottleneck or decision you are stuck on</li>
+<li style="margin:0 0 6px;">Any tools or systems already in play</li>
+</ul>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;">Calendly will ask these during booking, so add what you can there.</p>
+</td></tr>
+
+<!-- Signature -->
+<tr><td style="padding:32px 0 0;">
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0;">See you soon.</p>
+<p style="font-family:Georgia,serif;font-size:15px;line-height:1.5;color:#0c1e2f;margin:18px 0 0;">
+<strong style="font-weight:600;">Glenn Chua</strong>, Founder<br/>
+Blueprint<em style="font-style:italic;color:#c2461f;font-weight:600;">IT</em>, LLC<br/>
+<a href="mailto:glenn@blueprintit.ai" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">glenn@blueprintit.ai</a><br/>
+<a href="https://blueprintit.ai" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">www.blueprintit.ai</a>
+</p>
+</td></tr>
+
+<!-- Footer -->
+<tr><td style="padding:32px 0 0;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+<tr><td style="border-top:1px solid #1c6ea4;height:0;line-height:0;font-size:0;">&nbsp;</td></tr>
+<tr><td style="padding:14px 0 0;font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#6a7788;">
+Blueprint IT &nbsp;·&nbsp; 1-Hour Consultation &nbsp;·&nbsp; <a href="https://blueprintit.ai" style="color:#6a7788;text-decoration:none;">blueprintit.ai</a>
+</td></tr>
+</table>
+</td></tr>
+
+</table>
+
+</td></tr>
+</table>
+</body>
+</html>"
+`;
+
+exports[`consultation-welcome-template > plain-text body matches the expected shape (snapshot) 1`] = `
+"Hi Marco,
+
+Thanks for booking a consultation. Pick the hour that works for you here:
+
+    https://calendly.com/blueprintit/1-hour-meeting
+
+When you book, Calendly will send you a calendar invite with a video
+call link. If you would rather meet in person and you are near St. Louis,
+mention it in the booking form and we will work it out.
+
+A few things that help me prep:
+  - What you are hoping to walk away with
+  - One specific bottleneck or decision you are stuck on
+  - Any tools or systems already in play
+
+See you soon.
+
+Glenn Chua, Founder
+Blueprint IT, LLC
+glenn@blueprintit.ai
+www.blueprintit.ai
+"
+`;

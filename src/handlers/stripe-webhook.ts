@@ -1,4 +1,4 @@
-import { handlePaymentSuccess } from "./payment-success";
+import { handlePaymentSuccess, ProductType } from "./payment-success";
 import { StripeClient } from "../payments/stripe";
 
 export async function verifyStripeSignature(
@@ -52,6 +52,7 @@ export interface StripeWebhookEnv {
   STRIPE_SECRET_KEY_TEST?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_WEBHOOK_SECRET_TEST?: string;
+  CALENDLY_CONSULTATION_URL?: string;
 }
 
 export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): Promise<Response> {
@@ -79,6 +80,12 @@ export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): 
   const promoCode = full.metadata?.promoCode ?? extractPromoFromSession(full);
   const affiliate = full.metadata?.affiliate ?? null;
 
+  // productType is set by /create-stripe-checkout-session in session metadata.
+  // Missing or unknown values fall back to "foundation" so any pre-existing
+  // sessions in flight during deploy keep going through the original path.
+  const rawType = full.metadata?.productType;
+  const productType: ProductType = rawType === "consultation" ? "consultation" : "foundation";
+
   await handlePaymentSuccess(env, {
     paymentProvider: "stripe",
     paymentId: session.id,
@@ -88,6 +95,7 @@ export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): 
     promoCode,
     affiliate,
     discountAmount: session.total_details?.amount_discount ?? undefined,
+    productType,
   });
   return new Response("ok", { status: 200 });
 }

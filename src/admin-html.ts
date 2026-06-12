@@ -43,7 +43,14 @@ export const ADMIN_HTML = `<!DOCTYPE html>
   header h1 {
     font-size: 18px; font-weight: 600; letter-spacing: -0.01em;
   }
-  header .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  header .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .nav-link {
+    color: var(--muted); font-size: 13px; text-decoration: none;
+    padding: 7px 11px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--surface); white-space: nowrap; line-height: 1;
+    display: inline-block;
+  }
+  .nav-link:hover { background: var(--bg); }
   button {
     font: inherit; cursor: pointer; border-radius: 6px;
     border: 1px solid var(--border); background: var(--surface);
@@ -211,6 +218,7 @@ export const ADMIN_HTML = `<!DOCTYPE html>
   <header>
     <h1>Shop OS Licenses</h1>
     <div class="actions">
+      <a href="/admin/installs" class="nav-link">Install Logs &#8599;</a>
       <button id="refresh-btn" class="ghost" title="Reload from server">↻ Refresh</button>
       <button id="signout-btn" class="ghost">Sign out</button>
       <button id="issue-btn" class="primary">+ Issue License</button>

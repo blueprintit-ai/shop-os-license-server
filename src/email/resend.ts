@@ -1,4 +1,10 @@
 import { welcomeText, welcomeHtml, welcomeSubject, WelcomeTemplateInput } from "./welcome-template";
+import {
+  consultationText,
+  consultationHtml,
+  consultationSubject,
+  ConsultationTemplateInput,
+} from "./consultation-welcome-template";
 
 export interface ResendAttachment {
   filename: string;
@@ -10,6 +16,12 @@ export interface ResendSendInput extends WelcomeTemplateInput {
   fromName?: string;
   fromAddress?: string;
   attachments?: ResendAttachment[];
+}
+
+export interface ResendConsultationSendInput extends ConsultationTemplateInput {
+  to: string;
+  fromName?: string;
+  fromAddress?: string;
 }
 
 export interface ResendResponse {
@@ -39,6 +51,39 @@ export async function sendWelcomeEmail(
       content: a.content,
     }));
   }
+  const resp = await fetchImpl(RESEND_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await resp.text();
+  let data: ResendResponse;
+  try { data = JSON.parse(text); } catch { data = { error: { message: text } }; }
+  if (!resp.ok) {
+    return { error: { message: data.error?.message ?? `Resend ${resp.status}` } };
+  }
+  return data;
+}
+
+// Send the post-purchase email for a 1-Hour Consultation. No license key,
+// no PDF attachment — just a Calendly booking link.
+export async function sendConsultationEmail(
+  apiKey: string,
+  input: ResendConsultationSendInput,
+  fetchImpl: typeof fetch = (input, init) => fetch(input, init),
+): Promise<ResendResponse> {
+  const from = `${input.fromName ?? "Glenn Chua"} <${input.fromAddress ?? "glenn@blueprintit.ai"}>`;
+  const body: Record<string, unknown> = {
+    from,
+    to: input.to,
+    subject: consultationSubject(),
+    html: consultationHtml(input),
+    text: consultationText(input),
+    reply_to: input.fromAddress ?? "glenn@blueprintit.ai",
+  };
   const resp = await fetchImpl(RESEND_URL, {
     method: "POST",
     headers: {

@@ -85,10 +85,13 @@ export class StripeClient {
     return data.data[0] ?? null;
   }
 
-  // Create a Stripe Checkout session for the Foundation product, with optional promo code.
+  // Create a Stripe Checkout session, with optional promo code.
+  // customerEmail is optional: if omitted, Stripe Checkout collects it inline.
+  // This lets the Consultation flow skip the pre-checkout email field (no
+  // coupon validation needs the email server-side first).
   async createCheckoutSession(input: {
     priceId: string;
-    customerEmail: string;
+    customerEmail?: string;
     promotionCodeId?: string;
     successUrl: string;
     cancelUrl: string;
@@ -98,10 +101,12 @@ export class StripeClient {
       "mode": "payment",
       "line_items[0][price]": input.priceId,
       "line_items[0][quantity]": "1",
-      "customer_email": input.customerEmail,
       "success_url": input.successUrl,
       "cancel_url": input.cancelUrl,
     };
+    if (input.customerEmail) {
+      form["customer_email"] = input.customerEmail;
+    }
     if (input.promotionCodeId) {
       form["discounts[0][promotion_code]"] = input.promotionCodeId;
     }

@@ -386,11 +386,39 @@ function Invoke-ShopOSInstall {
   # Refresh PATH so freshly-installed `claude` is found in this session
   $env:PATH = [Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH","User")
 
+  # The native installer's ~/.local/bin isn't always on the registry PATH, so the
+  # refresh above can miss it. Add it directly so the launch below finds claude.
+  $claudeBin = "$env:USERPROFILE\.local\bin"
+  if ((Test-Path "$claudeBin\claude.exe") -and -not (Check-Command claude)) {
+    $env:PATH = "$claudeBin;" + $env:PATH
+  }
+
   $global:ShopOS_CurrentStep = "complete"
   Send-InstallLog -Status "success"
 
   Set-Location -LiteralPath $vaultPath
-  claude
+
+  # Auto-launch is a convenience, NOT part of a successful install. The vault is
+  # fully installed at this point. If claude still isn't visible on PATH (it can
+  # need a fresh terminal to pick up the new entry), print manual start steps
+  # instead of throwing — never turn a completed install into "Setup stopped".
+  if (Check-Command claude) {
+    claude
+  } else {
+    Write-Host ""
+    Write-Host "Shop OS is fully installed. ✓" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "To start Claude Code:" -ForegroundColor Cyan
+    Write-Host "  1. Close this window and open a NEW PowerShell"
+    Write-Host "     (so it picks up Claude Code on your PATH)"
+    Write-Host "  2. Run these two commands:"
+    Write-Host "       cd `"$vaultPath`""
+    Write-Host "       claude"
+    Write-Host ""
+    Write-Host "  3. Then type /bp-setup at the Claude prompt." -ForegroundColor Cyan
+    Write-Host ""
+    Read-Host "Press Enter to close this window"
+  }
 }
 
 # Run the installer. Any throw inside Invoke-ShopOSInstall (including ones

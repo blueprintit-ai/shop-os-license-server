@@ -213,7 +213,16 @@ function Invoke-ShopOSInstall {
     Write-Host "✓ Claude Code found" -ForegroundColor Green
   } else {
     Write-Host "📦 Installing Claude Code..." -ForegroundColor Yellow
-    $claudeScript = (Invoke-WebRequest -Uri "https://claude.ai/install.ps1" -UseBasicParsing).Content
+    # claude.ai/install.ps1 redirects to a bootstrap script served as
+    # application/octet-stream. Invoke-WebRequest returns .Content as a byte[]
+    # for non-text content types, and [scriptblock]::Create on a byte[] stringifies
+    # it as space-separated decimals ("112 97 114 ...") -> parse errors. Decode to
+    # a UTF-8 string first. Guard handles both byte[] and string across PS versions.
+    $claudeResp = Invoke-WebRequest -Uri "https://claude.ai/install.ps1" -UseBasicParsing
+    $claudeScript = $claudeResp.Content
+    if ($claudeScript -is [byte[]]) {
+      $claudeScript = [System.Text.Encoding]::UTF8.GetString($claudeScript)
+    }
     & ([scriptblock]::Create($claudeScript))
 
     # Refresh PATH so the freshly-installed claude is visible this session.

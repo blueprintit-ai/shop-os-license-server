@@ -43,7 +43,12 @@ fi
 # 2. Check/install Node.js
 if ! command -v node &> /dev/null; then
   echo "📦 Installing Node.js via Homebrew..."
-  brew install node
+  if ! brew install node; then
+    echo "✗ Node.js installation failed."
+    echo ""
+    echo "Install Node.js manually from https://nodejs.org or Homebrew, then re-run."
+    exit 1
+  fi
 else
   echo "✓ Node.js found"
 fi
@@ -56,7 +61,12 @@ fi
 # state.
 if ! command -v git &> /dev/null; then
   echo "📦 Installing Git via Homebrew..."
-  brew install git
+  if ! brew install git; then
+    echo "✗ Git installation failed."
+    echo ""
+    echo "Install Git manually from https://git-scm.com or Homebrew, then re-run."
+    exit 1
+  fi
 else
   echo "✓ Git found"
 fi
@@ -69,21 +79,43 @@ if command -v python3 &> /dev/null; then
   echo "✓ Python 3 found"
 else
   echo "📦 Installing Python 3 via Homebrew..."
-  brew install python3
+  if ! brew install python3; then
+    echo "✗ Python 3 installation failed."
+    echo ""
+    echo "Install Python 3 manually from https://www.python.org or Homebrew, then re-run."
+    exit 1
+  fi
 fi
 
 # 3. Check/install Claude Code
-if ! [ -d ~/.claude ]; then
+# Detect by binary on PATH, not by ~/.claude folder. The folder is only created
+# after first launch, so a PATH check correctly identifies npm/installer/shell installs.
+# The installer drops `claude` in ~/.local/bin, which a fresh login shell may not
+# have on PATH yet — add it up front so detection, verify, and the final exec all work.
+export PATH="$HOME/.local/bin:$PATH"
+if command -v claude &> /dev/null; then
+  echo "✓ Claude Code found"
+else
   echo "📦 Installing Claude Code..."
   curl -fsSL https://claude.ai/install.sh | bash
-else
-  echo "✓ Claude Code found"
+  # Verify installation succeeded
+  if ! command -v claude &> /dev/null; then
+    echo "✗ Claude Code installation failed. The \`claude\` command is not available on PATH."
+    echo ""
+    echo "Check that the installation completed successfully, then re-run this script."
+    exit 1
+  fi
 fi
 
 # 4. Check/install Obsidian
 if ! command -v obsidian &> /dev/null && ! [ -d /Applications/Obsidian.app ]; then
   echo "📦 Installing Obsidian via Homebrew..."
-  brew install --cask obsidian
+  if ! brew install --cask obsidian; then
+    echo "✗ Obsidian installation failed."
+    echo ""
+    echo "Install Obsidian manually from https://obsidian.md/download, then re-run."
+    exit 1
+  fi
 else
   echo "✓ Obsidian found"
 fi

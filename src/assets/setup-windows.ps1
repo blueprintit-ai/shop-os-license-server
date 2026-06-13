@@ -167,6 +167,9 @@ function Invoke-ShopOSInstall {
   } else {
     Write-Host "📦 Installing Git via WinGet..." -ForegroundColor Yellow
     & winget install --id Git.Git --scope user --silent --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+      throw "Git installation failed (winget exit code $LASTEXITCODE).`n`n  Install Git manually from https://git-scm.com/download/win, then re-run."
+    }
   }
 
   # 2c. Check/install Python 3
@@ -202,14 +205,34 @@ function Invoke-ShopOSInstall {
   }
 
   # 3. Check/install Claude Code
+  # Detect by binary on PATH, not by ~/.claude folder. The folder is only created
+  # after first launch, so a PATH check correctly identifies npm/installer/desktop installs.
   $global:ShopOS_CurrentStep = "claude_install"
   Write-Host ""
-  if (Test-Path $env:USERPROFILE\.claude) {
+  if (Check-Command claude) {
     Write-Host "✓ Claude Code found" -ForegroundColor Green
   } else {
     Write-Host "📦 Installing Claude Code..." -ForegroundColor Yellow
     $claudeScript = (Invoke-WebRequest -Uri "https://claude.ai/install.ps1" -UseBasicParsing).Content
     & ([scriptblock]::Create($claudeScript))
+
+    # Refresh PATH so the freshly-installed claude is visible this session.
+    $env:PATH = [Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH","User")
+
+    # The native installer drops claude.exe in %USERPROFILE%\.local\bin and updates
+    # the user PATH, but that new entry isn't always visible after the env refresh.
+    # Add the known location directly as a fallback so detection never false-fails.
+    if (-not (Check-Command claude)) {
+      $claudeBin = "$env:USERPROFILE\.local\bin"
+      if (Test-Path "$claudeBin\claude.exe") {
+        $env:PATH = "$claudeBin;" + $env:PATH
+        Write-Host "  Located claude at: $claudeBin" -ForegroundColor DarkGray
+      }
+    }
+
+    if (-not (Check-Command claude)) {
+      throw "Claude Code installation failed. The 'claude' command is not available on PATH.`n`n  Check that the installation completed successfully, then re-run this installer."
+    }
   }
 
   # 4. Check/install Obsidian
@@ -220,6 +243,9 @@ function Invoke-ShopOSInstall {
   } else {
     Write-Host "📦 Installing Obsidian via WinGet..." -ForegroundColor Yellow
     & winget install --id Obsidian.Obsidian --scope user --silent --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+      throw "Obsidian installation failed (winget exit code $LASTEXITCODE).`n`n  Install Obsidian manually from https://obsidian.md/download, then re-run."
+    }
   }
 
   # 5. Prompt for license key and vault path

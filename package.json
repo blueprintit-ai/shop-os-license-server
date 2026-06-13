@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "check:sync": "node scripts/check-asset-sync.mjs",
+    "predeploy": "node scripts/check-asset-sync.mjs",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
     "types": "wrangler types",

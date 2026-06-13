@@ -27,6 +27,29 @@ function Check-WinGet {
   return (Check-Command winget)
 }
 
+# winget returns a NON-ZERO exit code when a package is already installed with no
+# applicable upgrade (e.g. -1978335189 / 0x8A15002B) — that is NOT a failure. And
+# GUI apps like Obsidian never land on PATH, so Check-Command misses them. These
+# helpers verify a package by its real presence so we never abort on a false
+# failure. *>$null swallows winget's output; $LASTEXITCODE is still set by it.
+function Test-WingetInstalled {
+  param([string]$Id)
+  try {
+    & winget list --id $Id -e --accept-source-agreements *> $null
+    return ($LASTEXITCODE -eq 0)
+  } catch { return $false }
+}
+
+function Test-ObsidianInstalled {
+  $paths = @(
+    "$env:LOCALAPPDATA\Obsidian\Obsidian.exe",
+    "$env:LOCALAPPDATA\Programs\Obsidian\Obsidian.exe",
+    "$env:PROGRAMFILES\Obsidian\Obsidian.exe"
+  )
+  foreach ($p in $paths) { if ($p -and (Test-Path $p)) { return $true } }
+  return (Test-WingetInstalled "Obsidian.Obsidian")
+}
+
 # Extract HTTP status code and up to 500 chars of response body from a
 # web exception so error logs are immediately actionable without a repro.
 function Get-WebErrorDetail {
@@ -167,8 +190,11 @@ function Invoke-ShopOSInstall {
   } else {
     Write-Host "📦 Installing Git via WinGet..." -ForegroundColor Yellow
     & winget install --id Git.Git --scope user --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) {
-      throw "Git installation failed (winget exit code $LASTEXITCODE).`n`n  Install Git manually from https://git-scm.com/download/win, then re-run."
+    $gitCode = $LASTEXITCODE
+    # Verify by presence, not exit code — winget returns non-zero for "already
+    # installed / no upgrade available". Only fail if Git genuinely isn't there.
+    if (-not (Check-Command git) -and -not (Test-WingetInstalled "Git.Git")) {
+      throw "Git installation failed (winget exit code $gitCode).`n`n  Install Git manually from https://git-scm.com/download/win, then re-run."
     }
   }
 
@@ -247,14 +273,18 @@ function Invoke-ShopOSInstall {
   # 4. Check/install Obsidian
   $global:ShopOS_CurrentStep = "obsidian_install"
   Write-Host ""
-  if (Check-Command obsidian) {
+  if (Test-ObsidianInstalled) {
     Write-Host "✓ Obsidian found" -ForegroundColor Green
   } else {
     Write-Host "📦 Installing Obsidian via WinGet..." -ForegroundColor Yellow
     & winget install --id Obsidian.Obsidian --scope user --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) {
-      throw "Obsidian installation failed (winget exit code $LASTEXITCODE).`n`n  Install Obsidian manually from https://obsidian.md/download, then re-run."
+    $obsCode = $LASTEXITCODE
+    # Verify by presence, not exit code — winget returns non-zero (e.g.
+    # -1978335189) when Obsidian is already installed with no upgrade available.
+    if (-not (Test-ObsidianInstalled)) {
+      throw "Obsidian installation failed (winget exit code $obsCode).`n`n  Install Obsidian manually from https://obsidian.md/download, then re-run."
     }
+    Write-Host "✓ Obsidian installed" -ForegroundColor Green
   }
 
   # 5. Prompt for license key and vault path

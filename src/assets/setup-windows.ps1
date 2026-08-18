@@ -398,11 +398,20 @@ function Invoke-ShopOSInstall {
 
   Set-Location -LiteralPath $vaultPath
 
-  # Auto-launch is a convenience, NOT part of a successful install. The vault is
-  # fully installed at this point. If claude still isn't visible on PATH (it can
-  # need a fresh terminal to pick up the new entry), print manual start steps
-  # instead of throwing — never turn a completed install into "Setup stopped".
+  # Claude Code loads plugins in the background on its first launch. A second
+  # launch is required for /bp commands to be available. We handle this by
+  # launching twice: once to sign in and trigger the background sync, and again
+  # after the user exits so all commands are ready from the start.
   if (Check-Command claude) {
+    Write-Host ""
+    Write-Host "Step 1 of 2: Sign in to Claude Code." -ForegroundColor Cyan
+    Write-Host "After signing in, close Claude Code — it will reopen automatically with all commands ready." -ForegroundColor Yellow
+    Write-Host ""
+    claude
+
+    Write-Host ""
+    Write-Host "Relaunching Claude Code with all /bp commands ready..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 2
     claude
   } else {
     Write-Host ""
@@ -411,11 +420,12 @@ function Invoke-ShopOSInstall {
     Write-Host "To start Claude Code:" -ForegroundColor Cyan
     Write-Host "  1. Close this window and open a NEW PowerShell"
     Write-Host "     (so it picks up Claude Code on your PATH)"
-    Write-Host "  2. Run these two commands:"
+    Write-Host "  2. Open Claude Code once, sign in, then close it"
+    Write-Host "  3. Open Claude Code again in your vault:"
     Write-Host "       cd `"$vaultPath`""
     Write-Host "       claude"
     Write-Host ""
-    Write-Host "  3. Then type /bp-setup at the Claude prompt." -ForegroundColor Cyan
+    Write-Host "  4. Then type /bp-setup at the Claude prompt." -ForegroundColor Cyan
     Write-Host ""
     Read-Host "Press Enter to close this window"
   }

@@ -162,12 +162,19 @@ echo ""
 echo "=========================================="
 echo "🎉 Setup complete!"
 echo ""
-echo "Next steps:"
-echo "  1. Sign in to Claude Code if prompted"
-echo "  2. Type /bp-setup at the Claude prompt to personalize your vault"
-echo ""
-echo "Launching Claude Code..."
-sleep 1
 
+# Claude Code loads plugins in the background on its first launch. A second
+# launch is required for /bp commands to be available. Launch twice: once to
+# sign in and trigger the background sync, then again with all commands ready.
 cd "$VAULT_PATH"
+
+echo "Step 1 of 2: Sign in to Claude Code."
+echo "After signing in, close Claude Code — it will reopen automatically with all commands ready."
+echo ""
+sleep 1
+claude
+
+echo ""
+echo "Relaunching Claude Code with all /bp commands ready..."
+sleep 2
 exec claude

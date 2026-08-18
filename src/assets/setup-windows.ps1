@@ -50,6 +50,100 @@ function Test-ObsidianInstalled {
   return (Test-WingetInstalled "Obsidian.Obsidian")
 }
 
+# A non-zero winget exit code does NOT mean the install failed. Two codes show
+# up constantly on machines that already have the software:
+#   0x8A15002B (-1978335189) "already installed, no applicable upgrade"
+#   0x8A150014 (-1978335212) "no packages matched the query"
+# Both are recoverable if the package is in fact present. So: trust exit 0, and
+# for anything else let a presence probe have the final word. Every install step
+# routes its verdict through here so the "false failure" bug can't come back in
+# one branch while the others stay correct.
+function Test-WingetInstallFailed {
+  param([int]$ExitCode, [scriptblock]$PresenceCheck)
+  if ($ExitCode -eq 0) { return $false }
+  try {
+    if (& $PresenceCheck) { return $false }
+  } catch { }
+  return $true
+}
+
+# msiexec 1603 is the generic "fatal error during installation" code, but in this
+# installer it has one overwhelmingly likely cause: we fell back to a direct MSI
+# on a machine that already has a different Node.js build, and the MSI refuses to
+# install over it. Say so, instead of dead-ending on a bare exit code.
+function Get-MsiFailureMessage {
+  param([int]$ExitCode, [string]$Version, [string]$Url)
+  $base = "Node.js MSI installation failed (msiexec exit code $ExitCode).`n  Version: $Version`n  URL was: $Url"
+  if ($ExitCode -eq 1603) {
+    return $base + "`n`n  This almost always means a different version of Node.js is" +
+      "`n  already installed and the new installer will not replace it." +
+      "`n`n  To fix:" +
+      "`n    1. Open 'Add or Remove Programs' (Windows key, type: appwiz.cpl)" +
+      "`n    2. Uninstall 'Node.js'" +
+      "`n    3. Re-open PowerShell as administrator and run the installer again"
+  }
+  return $base + "`n`n  Re-open PowerShell as administrator and run the installer again." +
+    "`n  If it keeps failing, install Node.js manually from https://nodejs.org (LTS)."
+}
+
+# WinGet writes the new PATH entries to the registry, but a PowerShell session
+# that is already open keeps its own snapshot. Re-read the registry so tools
+# installed moments ago (or by an earlier run) become visible immediately.
+function Update-SessionPath {
+  try {
+    $machine = [Environment]::GetEnvironmentVariable("PATH","Machine")
+    $user    = [Environment]::GetEnvironmentVariable("PATH","User")
+    $env:PATH = (@($machine, $user) | Where-Object { $_ }) -join ";"
+  } catch { }
+}
+
+# Node can be installed and still be invisible to Check-Command: user-scope
+# winget installs land in a directory the current session's PATH snapshot never
+# had. Refresh from the registry, then fall back to searching the known install
+# locations. Prepending the directory we find makes node/npx usable right away.
+function Test-NodePresent {
+  Update-SessionPath
+  if (Check-Command node) { return $true }
+  $nodeSearchPaths = @(
+    "$env:ProgramFiles\nodejs",
+    "${env:ProgramFiles(x86)}\nodejs",
+    "$env:LOCALAPPDATA\Programs\nodejs",
+    "$env:APPDATA\npm"
+  )
+  foreach ($p in $nodeSearchPaths) {
+    if (-not $p) { continue }
+    if ((Test-Path "$p\node.exe") -or (Test-Path "$p\npx.cmd")) {
+      $env:PATH = "$p;" + $env:PATH
+      Write-Host "  Located Node.js at: $p" -ForegroundColor DarkGray
+      return $true
+    }
+  }
+  return (Test-WingetInstalled "OpenJS.NodeJS.LTS") -or (Test-WingetInstalled "OpenJS.NodeJS")
+}
+
+# Windows ships App Execution Alias stubs for python/python3 that write to stderr
+# and exit non-zero when no real Python is installed. With $ErrorActionPreference
+# = Stop that stderr becomes a terminating exception, so probe with EAP set to
+# Continue inside try/catch and judge by $LASTEXITCODE and the version string.
+function Test-Python3Present {
+  Update-SessionPath
+  foreach ($pyCmd in @("python3", "python")) {
+    if (-not (Check-Command $pyCmd)) { continue }
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+      $ver = & $pyCmd --version 2>&1
+      if ($LASTEXITCODE -eq 0 -and "$ver" -match "Python 3") {
+        $ErrorActionPreference = $prevEAP
+        $global:ShopOS_PythonVersion = "$ver".Trim()
+        return $true
+      }
+    } catch { }
+    $ErrorActionPreference = $prevEAP
+  }
+  return $false
+}
+
 # Extract HTTP status code and up to 500 chars of response body from a
 # web exception so error logs are immediately actionable without a repro.
 function Get-WebErrorDetail {
@@ -79,6 +173,7 @@ function Get-WebErrorDetail {
 $global:ShopOS_WorkerUrl   = "https://shop-os-license-server.glenn-15d.workers.dev"
 $global:ShopOS_LicenseKey  = "unknown"
 $global:ShopOS_CurrentStep = "start"
+$global:ShopOS_PythonVersion = ""
 
 function Send-InstallLog {
   param([string]$Status, [string]$ErrorMessage = "")
@@ -120,6 +215,12 @@ function Invoke-ShopOSInstall {
   Write-Host "You will be prompted for your license key after prerequisites are installed."
   Write-Host ""
 
+  # Pull PATH from the registry before probing anything. Without this, a session
+  # that was open when a tool was installed (or an elevated session started from a
+  # stale parent) reports node/git/python as missing when they are plainly there,
+  # which sends every check below down its install-and-fail path.
+  Update-SessionPath
+
   # 1. Check WinGet
   $global:ShopOS_CurrentStep = "winget_check"
   if (-not (Check-WinGet)) {
@@ -130,7 +231,7 @@ function Invoke-ShopOSInstall {
   # 2. Check/install Node.js
   $global:ShopOS_CurrentStep = "node_install"
   Write-Host ""
-  if (Check-Command node) {
+  if (Test-NodePresent) {
     Write-Host "✓ Node.js found" -ForegroundColor Green
   } else {
     Write-Host "📦 Installing Node.js via WinGet..." -ForegroundColor Yellow
@@ -143,7 +244,13 @@ function Invoke-ShopOSInstall {
     & winget install --id OpenJS.NodeJS.LTS --silent --accept-package-agreements --accept-source-agreements
     $wingetExitCode = $LASTEXITCODE
 
-    if ($wingetExitCode -ne 0) {
+    # Do NOT fall back on exit code alone. WinGet exits non-zero when Node is
+    # already installed with no upgrade available (-1978335189), and running the
+    # direct MSI over an existing install is exactly what produced msiexec 1603
+    # for a customer on 2026-08-18. Ask whether Node is actually there first.
+    if (-not (Test-WingetInstallFailed -ExitCode $wingetExitCode -PresenceCheck { Test-NodePresent })) {
+      Write-Host "✓ Node.js installed" -ForegroundColor Green
+    } else {
       Write-Host "  WinGet install failed (exit code $wingetExitCode). Falling back to direct MSI download..." -ForegroundColor Yellow
       $global:ShopOS_CurrentStep = "node_install_msi_fallback"
       Send-InstallLog -Status "retry" -ErrorMessage "winget OpenJS.NodeJS.LTS failed (exit $wingetExitCode) — trying MSI fallback"
@@ -175,8 +282,11 @@ function Invoke-ShopOSInstall {
       Write-Host "  Installing MSI (this may take a minute)..." -ForegroundColor Yellow
       $msiProc = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$msiPath`" /qn ADDLOCAL=ALL"
       Remove-Item $msiPath -ErrorAction SilentlyContinue
-      if ($msiProc.ExitCode -ne 0) {
-        throw "Node.js MSI installation failed (msiexec exit code $($msiProc.ExitCode)).`n  Version: $ltsVer`n  URL was: $msiUrl"
+      # Same rule as above: a non-zero msiexec code with Node actually present
+      # (e.g. the MSI bailed because the existing install is already current) is
+      # not worth stopping the whole setup for.
+      if ($msiProc.ExitCode -ne 0 -and -not (Test-NodePresent)) {
+        throw (Get-MsiFailureMessage -ExitCode $msiProc.ExitCode -Version $ltsVer -Url $msiUrl)
       }
       Write-Host "✓ Node.js installed via direct MSI" -ForegroundColor Green
     }
@@ -200,34 +310,31 @@ function Invoke-ShopOSInstall {
 
   # 2c. Check/install Python 3
   # bp-digest uses Python 3 + MarkItDown to read PDFs, Word docs, and spreadsheets.
-  # Windows ships App Execution Alias stubs for python/python3 that write to stderr
-  # and exit non-zero when no real Python is installed. With $ErrorActionPreference
-  # = Stop, that stderr output becomes a terminating exception, so we probe with
-  # EAP set to Continue inside a try/catch and verify via $LASTEXITCODE instead.
   $global:ShopOS_CurrentStep = "python_install"
   Write-Host ""
-  $pythonFound = $false
-  foreach ($pyCmd in @("python3", "python")) {
-    if (-not (Check-Command $pyCmd)) { continue }
-    $prevEAP = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
-      $ver = & $pyCmd --version 2>&1
-      if ($LASTEXITCODE -eq 0 -and "$ver" -match "Python 3") {
-        $pythonFound = $true
-        Write-Host "✓ Python 3 found ($ver)" -ForegroundColor Green
-        break
-      }
-    } catch { }
-    $ErrorActionPreference = $prevEAP
-  }
-  $ErrorActionPreference = "Stop"
-  if (-not $pythonFound) {
+  if (Test-Python3Present) {
+    Write-Host "✓ Python 3 found ($($global:ShopOS_PythonVersion))" -ForegroundColor Green
+  } else {
     Write-Host "📦 Installing Python 3 via WinGet..." -ForegroundColor Yellow
-    & winget install --id Python.Python.3 --scope user --silent --accept-package-agreements --accept-source-agreements
-    if ($LASTEXITCODE -ne 0) {
-      throw "Python 3 installation failed (winget exit code $LASTEXITCODE).`n`n  Install Python 3 manually from python.org/downloads`n  (check 'Add python.exe to PATH' during install), then re-run."
+    # "Python.Python.3" matches no package — the real ids are versioned
+    # (Python.Python.3.13, .3.12, ...). Querying the bare prefix is what returned
+    # 0x8A150014 "no applications found" for a customer on 2026-08-18. Try the
+    # current versioned ids in order and stop at the first that lands.
+    # --scope user is deliberately omitted: the python.org manifests do not all
+    # publish a user-scope installer, and the filter can itself cause a no-match.
+    $pyIds = @("Python.Python.3.13", "Python.Python.3.12", "Python.Python.3.11")
+    $lastPyCode = 0
+    foreach ($pyId in $pyIds) {
+      & winget install --id $pyId -e --silent --accept-package-agreements --accept-source-agreements
+      $lastPyCode = $LASTEXITCODE
+      if (-not (Test-WingetInstallFailed -ExitCode $lastPyCode -PresenceCheck { Test-Python3Present })) { break }
+      Write-Host "  $pyId unavailable (exit code $lastPyCode), trying next..." -ForegroundColor DarkGray
     }
+
+    if (-not (Test-Python3Present)) {
+      throw "Python 3 installation failed (last winget exit code $lastPyCode).`n`n  Install Python 3 manually from https://www.python.org/downloads/`n  IMPORTANT: tick 'Add python.exe to PATH' on the first screen of that`n  installer, then close this window, open a NEW PowerShell as administrator`n  and run the Shop OS installer command again."
+    }
+    Write-Host "✓ Python 3 installed ($($global:ShopOS_PythonVersion))" -ForegroundColor Green
   }
 
   # 3. Check/install Claude Code
@@ -334,21 +441,7 @@ function Invoke-ShopOSInstall {
   # WinGet's user-scope Node.js install writes to User PATH but the new entry
   # isn't always visible in the current session after the env var refresh. Search
   # known install locations as a fallback so npx is always findable.
-  if (-not (Check-Command npx)) {
-    $nodeSearchPaths = @(
-      "$env:ProgramFiles\nodejs",
-      "${env:ProgramFiles(x86)}\nodejs",
-      "$env:LOCALAPPDATA\Programs\nodejs",
-      "$env:APPDATA\npm"
-    )
-    foreach ($p in $nodeSearchPaths) {
-      if (Test-Path "$p\npx.cmd") {
-        $env:PATH = "$p;" + $env:PATH
-        Write-Host "  Located npx at: $p" -ForegroundColor DarkGray
-        break
-      }
-    }
-  }
+  if (-not (Check-Command npx)) { Test-NodePresent | Out-Null }
 
   $global:ShopOS_CurrentStep = "npx_check"
   if (-not (Check-Command npx)) {
@@ -434,6 +527,10 @@ function Invoke-ShopOSInstall {
 # Run the installer. Any throw inside Invoke-ShopOSInstall (including ones
 # from $ErrorActionPreference = "Stop" on unexpected failures) lands here.
 # The window stays open so the customer can read the error.
+# test/setup-windows.tests.ps1 dot-sources this file to exercise the decision
+# helpers above; SHOPOS_INSTALLER_TEST keeps that from launching a real install.
+if ($env:SHOPOS_INSTALLER_TEST) { return }
+
 try {
   Invoke-ShopOSInstall
 } catch {

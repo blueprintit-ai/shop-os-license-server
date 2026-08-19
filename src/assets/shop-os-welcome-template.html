@@ -712,10 +712,14 @@ pre.ascii-diagram {
 <pre><code>/bin/bash -c &quot;$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)&quot;
 </code></pre>
 <p><strong>Windows</strong> (in PowerShell as Administrator), copy and paste this line:</p>
-<pre><code class="language-powershell">&amp;([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
+<pre><code class="language-powershell">&amp;([scriptblock]::Create((iwr -UseBasicParsing 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
 </code></pre>
 <blockquote>
-<p><strong>Heads up, Mac users:</strong> you will be asked for your Mac login password near the start. That is Homebrew installing developer tools. Type your password (the cursor will not move, that is normal) and press Enter.</p>
+<p><strong>Heads up, Mac users. Two things Terminal does that look alarming and are not:</strong></p>
+<ol>
+<li><strong>"Possible Malware, Paste Blocked."</strong> Recent versions of macOS warn whenever anything is pasted into Terminal. It is a blanket warning about the act of pasting, not about this command. Click <strong>Paste Anyway</strong>, then press Enter.</li>
+<li><strong>Your password will look like it isn't typing.</strong> You will be asked for your Mac login password near the start, so Homebrew can install developer tools. Terminal deliberately shows nothing as you type: no dots, no cursor movement. Type it anyway and press Enter.</li>
+</ol>
 </blockquote>
 <p>The script will:</p>
 <ol>

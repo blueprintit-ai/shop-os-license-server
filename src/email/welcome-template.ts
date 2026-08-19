@@ -37,11 +37,19 @@ re-download it any time from:
 To start, copy and paste this command in Terminal (Mac) or PowerShell (Windows):
 
 Mac:    /bin/bash -c "$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)"
-Windows: &([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
+Windows: &([scriptblock]::Create((iwr -UseBasicParsing 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
 
-On Mac, you will be asked for your Mac login password near the start.
-That is Homebrew installing developer tools. Type your password (the
-cursor will not move) and press Enter. This is normal and safe.
+Two things Mac users see that look alarming and are not:
+
+1. "Possible Malware, Paste Blocked." Recent versions of macOS warn
+   whenever anything is pasted into Terminal. It is a blanket warning
+   about pasting, not about this command. Click Paste Anyway, then
+   press Enter.
+
+2. Your password will look like it isn't typing. You will be asked for
+   your Mac login password near the start, so Homebrew can install
+   developer tools. Terminal deliberately shows nothing as you type:
+   no dots, no cursor movement. Type it anyway and press Enter.
 
 The installer will handle everything:
 • Guide you to choose where to create your Shop OS Vault
@@ -138,8 +146,8 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Mac:</strong></p>
 <div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">/bin/bash -c "$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)"</div>
 <p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Windows:</strong></p>
-<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">&amp;([scriptblock]::Create((iwr 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))</div>
-<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:12px 0 8px;background:#fdf6e3;border-left:3px solid #c2461f;padding:10px 12px;"><strong>Heads up, Mac users:</strong> you will be asked for your Mac login password near the start. That is Homebrew installing developer tools. Type your password (the cursor will not move) and press Enter. This is normal and safe.</p>
+<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">&amp;([scriptblock]::Create((iwr -UseBasicParsing 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))</div>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:12px 0 8px;background:#fdf6e3;border-left:3px solid #c2461f;padding:10px 12px;"><strong>Heads up, Mac users — two things Terminal does that look alarming and are not:</strong><br><br><strong>1. &ldquo;Possible Malware, Paste Blocked.&rdquo;</strong> Recent versions of macOS warn whenever anything is pasted into Terminal. It is a blanket warning about pasting, not about this command. Click <strong>Paste Anyway</strong>, then press Enter.<br><br><strong>2. Your password will look like it isn&rsquo;t typing.</strong> You will be asked for your Mac login password near the start, so Homebrew can install developer tools. Terminal deliberately shows nothing as you type &mdash; no dots, no cursor movement. Type it anyway and press Enter.</p>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">The installer will handle everything:</p>
 <ul style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px 24px;padding:0;">
 <li style="margin:0 0 6px;">Guide you to choose where to create your Shop OS Vault</li>

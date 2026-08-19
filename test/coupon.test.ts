@@ -58,11 +58,13 @@ describe("validateCoupon", () => {
     expect(r.error).toMatch(/not recognized/i);
   });
 
-  it("accepts FOUNDING50 with $250 off, finalPrice 500.00", async () => {
+  // Base price is $1,000 (BASE_PRICE_CENTS in src/payments/coupon.ts), so $250
+  // off leaves $750. This expected 500.00 from an earlier $750 base price.
+  it("accepts FOUNDING50 with $250 off, finalPrice 750.00", async () => {
     const r = await validateCoupon(stripeMock(makePromo({ amount_off: 25000 })), "founding50");
     expect(r.valid).toBe(true);
     expect(r.code).toBe("FOUNDING50");
-    expect(r.finalPrice).toBe(50000);
+    expect(r.finalPrice).toBe(75000);
     expect(r.discountAmount).toBe(25000);
     expect(r.label).toMatch(/FOUNDING50/);
     expect(r.label).toMatch(/250\.00/);

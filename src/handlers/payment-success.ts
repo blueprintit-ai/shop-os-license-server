@@ -128,7 +128,7 @@ export async function handlePaymentSuccess(
   if (!license.metadata?.welcomeEmailSentAt) {
     if (env.RESEND_API_KEY) {
       const [welcomeB64, firstWeekB64] = await Promise.all([
-        generateCustomWelcomePdf(env, license.key),
+        generateWelcomePdfWithFallback(env, license.key),
         loadAssetBase64(env.ASSETS, "shop-os-first-week-guide.pdf"),
       ]);
       const send = await sendEmail(env.RESEND_API_KEY, {
@@ -319,6 +319,26 @@ export async function renderWelcomePdfBytes(env: any, licenseKey: string): Promi
   });
   await browser.close();
   return pdfBytes;
+}
+
+// A paying customer must always get their license email. Personalising the
+// welcome PDF depends on the Browser Rendering binding, which can be absent
+// (it has no local emulation, so it is undefined under vitest) or fail at
+// runtime on a quota or cold-start error. Previously any such failure threw
+// straight out of handlePaymentSuccess and the customer received nothing at
+// all after paying. Fall back to the pre-built static welcome PDF instead:
+// it lacks the embedded key, but the key is printed in § 01 of the email
+// body, so the customer is never blocked.
+async function generateWelcomePdfWithFallback(env: any, licenseKey: string): Promise<string> {
+  try {
+    return await generateCustomWelcomePdf(env, licenseKey);
+  } catch (err) {
+    console.error(
+      "custom welcome PDF render failed, attaching the static welcome PDF instead:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return loadAssetBase64(env.ASSETS, "shop-os-welcome.pdf");
+  }
 }
 
 async function generateCustomWelcomePdf(env: any, licenseKey: string): Promise<string> {

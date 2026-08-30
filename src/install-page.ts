@@ -124,12 +124,32 @@ export function buildInstallPage(info: InstallLicenseInfo, bookingUrl: string): 
 
 <p style="line-height:1.6;color:#4a4d52;font-size:14px;">Anything go sideways? Stop there and <a href="${esc(bookingUrl)}" style="color:#1c6ea4;">book your setup hour</a> or reply to your welcome email: we finish it with you on a screen share. Self-installing does not use up your included setup and training session.</p>
 
+<div id="done-banner" hidden style="border:1px solid #2E7D4F;background:#E7F2E9;color:#1b1f24;padding:18px 22px;margin:24px 0 0;">
+<div style="${mono}font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#2E7D4F;margin-bottom:8px;">Install complete</div>
+<p style="line-height:1.6;margin:0;">Shop OS reported a successful install on this license. Open <strong>Claude Code</strong> in your vault folder and type <strong style="${mono}">/bp-setup</strong> to personalize your Shop Brain &mdash; and see you at your training session.</p>
+</div>
+
 <script>
 (function(){
   var mac = /Mac|iPhone|iPad/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent);
   var first = document.getElementById(mac ? "mac-card" : "win-card");
   var second = document.getElementById(mac ? "win-card" : "mac-card");
   if (first && second && second.parentNode) { second.parentNode.insertBefore(first, second); }
+
+  // Flip to the success state once an install reports in (checks ~30 min).
+  var tries = 0;
+  function check(){
+    tries++;
+    fetch("/install-status?key=${k}").then(function(r){ return r.json(); }).then(function(d){
+      if (d && d.installed) {
+        var b = document.getElementById("done-banner");
+        if (b) { b.hidden = false; b.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+      } else if (tries < 180) {
+        setTimeout(check, 10000);
+      }
+    }).catch(function(){ if (tries < 180) setTimeout(check, 10000); });
+  }
+  check();
 })();
 </script>
 </div></body></html>`;

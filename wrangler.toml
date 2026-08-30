@@ -17,6 +17,10 @@ binding = "BROWSER"
 # Secrets (set via `wrangler secret put ADMIN_TOKEN`, do NOT commit):
 # - ADMIN_TOKEN: bearer token required for /issue, /revoke, /list endpoints
 
+# Failure sweep: alert on installs that errored and never recovered.
+[triggers]
+crons = ["*/15 * * * *"]
+
 [vars]
 # Public env vars (safe to commit).
 SERVICE_NAME = "shop-os-license-server"

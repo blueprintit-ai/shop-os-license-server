@@ -88,10 +88,13 @@ export interface Env {
 interface InstallLog {
   license_key: string;
   timestamp: string;
-  status: "success" | "error" | "retry";
+  // success/error/retry arrive via POST /install-log from the installers;
+  // page_view/download are written internally by the funnel routes so the
+  // admin view shows the whole journey per key.
+  status: "success" | "error" | "retry" | "page_view" | "download";
   error_message?: string;
   step?: string;
-  machine?: { os?: string; ps_version?: string; username?: string };
+  machine?: { os?: string; ps_version?: string; username?: string; source?: string };
 }
 
 async function handleInstallLog(req: Request, env: Env): Promise<Response> {
@@ -112,6 +115,113 @@ async function handleInstallLog(req: Request, env: Env): Promise<Response> {
   const kvKey = `install-log:${body.license_key}:${Date.now()}`;
   await env.LICENSES.put(kvKey, JSON.stringify(log), { expirationTtl: 180 * 24 * 60 * 60 });
   return json(req, { ok: true, logged_at: timestamp });
+}
+
+// Internal funnel event writer. Shares the install-log:{key}:{ts} shape so
+// the admin install-logs view shows page views and downloads inline with
+// install outcomes. Best-effort: a KV hiccup must never affect the response.
+async function logFunnelEvent(
+  env: Env,
+  licenseKey: string,
+  status: "page_view" | "download",
+  step?: string,
+): Promise<void> {
+  try {
+    const log: InstallLog = {
+      license_key: licenseKey,
+      timestamp: new Date().toISOString(),
+      status,
+      ...(step ? { step } : {}),
+    };
+    await env.LICENSES.put(`install-log:${licenseKey}:${Date.now()}`, JSON.stringify(log), {
+      expirationTtl: 180 * 24 * 60 * 60,
+    });
+  } catch {
+    // best-effort
+  }
+}
+
+// Public, boolean-only: has this key ever reported a successful install?
+// Polled by the /install page to flip to its success state. Reveals nothing
+// beyond what holding the key already grants.
+async function handleInstallStatus(req: Request, url: URL, env: Env): Promise<Response> {
+  const key = (url.searchParams.get("key") || "").trim().toUpperCase();
+  if (!key) return json(req, { error: "key required" }, 400);
+  const list = await env.LICENSES.list({ prefix: `install-log:${key}:`, limit: 1000 });
+  for (const k of [...list.keys].reverse()) {
+    const entry = await env.LICENSES.get<InstallLog>(k.name, "json");
+    if (entry?.status === "success") {
+      return json(req, { installed: true, at: entry.timestamp });
+    }
+  }
+  return json(req, { installed: false });
+}
+
+// Failure sweep: for every license with an install error that is 30min-24h
+// old and has no later success, send one ops alert email (deduped per error
+// via an install-alert marker, 7-day TTL). Runs on the cron trigger and via
+// POST /admin/run-failure-sweep.
+async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts: number }> {
+  if (!env.RESEND_API_KEY) return { checked: 0, alerts: 0 };
+  const now = Date.now();
+  const list = await env.LICENSES.list({ prefix: "install-log:", limit: 1000 });
+  const byKey = new Map<string, { ts: number; name: string }[]>();
+  for (const k of list.keys) {
+    const parts = k.name.split(":");
+    if (parts.length < 3) continue;
+    const ts = Number(parts[2]);
+    if (!Number.isFinite(ts)) continue;
+    const lic = parts[1];
+    if (lic === "unknown") continue;
+    if (now - ts > 24 * 3600e3) continue;
+    if (!byKey.has(lic)) byKey.set(lic, []);
+    byKey.get(lic)!.push({ ts, name: k.name });
+  }
+  let alerts = 0;
+  for (const [lic, entries] of byKey) {
+    entries.sort((a, b) => a.ts - b.ts);
+    const loaded = await Promise.all(
+      entries.slice(-20).map(async (e) => ({ ts: e.ts, log: await env.LICENSES.get<InstallLog>(e.name, "json") })),
+    );
+    const errors = loaded.filter((l) => l.log?.status === "error" && now - l.ts >= 30 * 60e3);
+    if (errors.length === 0) continue;
+    const lastError = errors[errors.length - 1];
+    if (loaded.some((l) => l.log?.status === "success" && l.ts > lastError.ts)) continue;
+    const marker = `install-alert:${lic}:${lastError.ts}`;
+    if (await env.LICENSES.get(marker)) continue;
+    const log = lastError.log!;
+    const text = [
+      `A Shop OS install for ${lic} failed and has not succeeded since.`,
+      ``,
+      `Step:  ${log.step ?? "unknown"}`,
+      `Error: ${log.error_message ?? "(none recorded)"}`,
+      `When:  ${log.timestamp}`,
+      `OS:    ${log.machine?.os ?? "unknown"} (${log.machine?.source ?? "installer"})`,
+      ``,
+      `Full history: https://shop-os-license-server.glenn-15d.workers.dev/admin/installs`,
+      ``,
+      `Suggested move: email the customer their booking link before they email you.`,
+    ].join("\n");
+    try {
+      const resp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "Blueprint.ai <glenn@blueprintit.ai>",
+          to: "glenn@blueprintit.ai",
+          subject: `Shop OS install failed: ${lic} (${log.step ?? "unknown step"})`,
+          text,
+        }),
+      });
+      if (resp.ok) {
+        await env.LICENSES.put(marker, "1", { expirationTtl: 7 * 24 * 3600 });
+        alerts++;
+      }
+    } catch {
+      // leave marker unset so the next sweep retries
+    }
+  }
+  return { checked: byKey.size, alerts };
 }
 
 async function handleAdminInstallLogs(req: Request, env: Env): Promise<Response> {
@@ -303,6 +413,7 @@ async function handleInstallPage(req: Request, url: URL, env: Env): Promise<Resp
   const headers = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...corsResponseHeaders(req) };
   if (!res.ok) return new Response(buildInvalidKeyPage(res.reason), { status: 404, headers });
   const bookingUrl = env.CALENDLY_SETUP_URL ?? env.CALENDLY_CONSULTATION_URL ?? "https://calendly.com/blueprintit/shop-os-foundation-setup";
+  await logFunnelEvent(env, res.key, "page_view", "install_page");
   return new Response(buildInstallPage({ key: res.key, customer: res.customer }, bookingUrl), { status: 200, headers });
 }
 
@@ -312,6 +423,7 @@ async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Re
   const os = (url.searchParams.get("os") || "").toLowerCase();
   if (os !== "mac" && os !== "windows") return json(req, { error: "os must be 'mac' or 'windows'" }, 400);
   const info = { key: res.key, customer: res.customer };
+  await logFunnelEvent(env, res.key, "download", os);
   if (os === "mac") {
     // Zip so the .command keeps its execute bit — a bare download has none
     // and macOS refuses to run it ("appropriate access privileges").
@@ -515,6 +627,12 @@ async function handleFounding50Count(req: Request, env: Env): Promise<Response> 
 // ----- router -----
 
 export default {
+  // Cron (see [triggers] in wrangler.toml): alert on installs that failed and
+  // never recovered, so a stuck self-installer gets human follow-up fast.
+  async scheduled(_event: unknown, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }): Promise<void> {
+    ctx.waitUntil(sweepFailedInstalls(env));
+  },
+
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
@@ -665,6 +783,12 @@ export default {
       }
 
       if (path === "/install" && method === "GET") return handleInstallPage(req, url, env);
+      if (path === "/install-status" && method === "GET") return handleInstallStatus(req, url, env);
+      if (method === "POST" && path === "/admin/run-failure-sweep") {
+        const adminCheck = await requireAdmin(req, env);
+        if (adminCheck) return adminCheck;
+        return json(req, await sweepFailedInstalls(env));
+      }
       if (path === "/install-script" && method === "GET") return handleInstallScript(req, url, env);
       if (path === "/validate" && method === "GET") return handleValidate(req, url, env, false);
       if (path === "/refresh" && method === "GET") return handleValidate(req, url, env, true);

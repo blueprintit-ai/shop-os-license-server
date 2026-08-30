@@ -4,6 +4,28 @@ set -e
 # Shop OS Foundation — macOS Setup Script
 # One command to install all prerequisites and Shop OS
 
+# ---- install telemetry (best-effort, mirrors setup-windows.ps1) ----
+# Reports where a run stopped to the license server's install-log so failed
+# self-installs are visible without a screen share. Never blocks or fails
+# the install: 5s timeout, errors swallowed.
+WORKER_URL="https://shop-os-license-server.glenn-15d.workers.dev"
+CURRENT_STEP="start"
+LOG_LICENSE_KEY="unknown"
+send_install_log() {
+  local err_json=""
+  if [ -n "${2:-}" ]; then err_json=",\"error_message\":\"$2\""; fi
+  curl -s -m 5 -X POST -H "content-type: application/json" \
+    -d "{\"license_key\":\"$LOG_LICENSE_KEY\",\"status\":\"$1\",\"step\":\"$CURRENT_STEP\",\"machine\":{\"os\":\"macOS $(sw_vers -productVersion 2>/dev/null || echo unknown)\",\"source\":\"setup-macos.sh\"}$err_json}" \
+    "$WORKER_URL/install-log" >/dev/null 2>&1 || true
+}
+on_exit() {
+  local code=$?
+  if [ $code -ne 0 ]; then
+    send_install_log error "setup stopped at step $CURRENT_STEP (exit $code)"
+  fi
+}
+trap on_exit EXIT
+
 echo "🚀 Shop OS Foundation — macOS Setup"
 echo "=========================================="
 echo ""
@@ -38,6 +60,7 @@ if ! command -v brew &> /dev/null; then
   fi
 fi
 
+CURRENT_STEP="homebrew_install"
 # 1. Check/install Homebrew
 if ! command -v brew &> /dev/null; then
   echo "📦 Installing Homebrew..."
@@ -58,6 +81,7 @@ else
   echo "✓ Homebrew found"
 fi
 
+CURRENT_STEP="node_install"
 # 2. Check/install Node.js
 if ! command -v node &> /dev/null; then
   echo "📦 Installing Node.js via Homebrew..."
@@ -71,6 +95,7 @@ else
   echo "✓ Node.js found"
 fi
 
+CURRENT_STEP="git_install"
 # 2b. Check/install Git
 # The Shop OS npx installer uses git to refresh the plugin marketplace clone
 # (~/.claude/plugins/marketplaces/blueprint-skills). On most Macs git arrives
@@ -89,6 +114,7 @@ else
   echo "✓ Git found"
 fi
 
+CURRENT_STEP="python_install"
 # 2c. Check/install Python 3
 # bp-digest uses Python 3 + MarkItDown to read PDFs, Word docs, and spreadsheets
 # dropped into the Raw/ inbox. macOS ships Python 3 on recent versions but we
@@ -105,6 +131,7 @@ else
   fi
 fi
 
+CURRENT_STEP="claude_install"
 # 3. Check/install Claude Code
 # Detect by binary on PATH, not by ~/.claude folder. The folder is only created
 # after first launch, so a PATH check correctly identifies npm/installer/shell installs.
@@ -140,6 +167,7 @@ if [ -x "$HOME/.local/bin/claude" ]; then
   fi
 fi
 
+CURRENT_STEP="obsidian_install"
 # 4. Check/install Obsidian
 if ! command -v obsidian &> /dev/null && ! [ -d /Applications/Obsidian.app ]; then
   echo "📦 Installing Obsidian via Homebrew..."
@@ -153,6 +181,7 @@ else
   echo "✓ Obsidian found"
 fi
 
+CURRENT_STEP="license_prompt"
 # 5. Prompt for license key and vault path
 echo ""
 echo "=========================================="
@@ -173,6 +202,7 @@ if [ -z "$LICENSE_KEY" ]; then
   echo "✗ No license key provided. Exiting."
   exit 1
 fi
+LOG_LICENSE_KEY="$LICENSE_KEY"
 
 echo ""
 echo "A folder picker will open. Navigate to where you want Shop OS installed."
@@ -195,6 +225,7 @@ echo ""
 echo "Installing Shop OS to: $VAULT_PATH"
 echo ""
 
+CURRENT_STEP="npx_installer"
 # 6. Run Shop OS installer with license key and vault path
 # Redirect stdin to /dev/tty so npx doesn't drain the curl|bash pipe.
 # Prefer the npm registry copy; fall back to installing straight from the
@@ -211,6 +242,9 @@ echo ""
 echo "=========================================="
 echo "🎉 Setup complete!"
 echo ""
+CURRENT_STEP="complete"
+send_install_log success
+trap - EXIT
 
 # Claude Code loads plugins in the background on its first launch. A second
 # launch is required for /bp commands to be available. Launch twice: once to

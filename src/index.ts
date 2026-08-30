@@ -32,7 +32,7 @@ import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
 import { handlePayPalWebhook } from "./handlers/paypal-webhook.js";
 import { handlePaymentSuccess, renderWelcomePdfBytes, sendWelcomeEmailForLicense } from "./handlers/payment-success.js";
 import { welcomeHtml, welcomeText } from "./email/welcome-template.js";
-import { buildInstallPage, buildInvalidKeyPage, buildMacCommand, buildWindowsBat } from "./install-page.js";
+import { buildInstallPage, buildInvalidKeyPage, buildMacCommand, buildWindowsBat, buildZipWithExecutable } from "./install-page.js";
 
 export interface Env {
   LICENSES: KVNamespace;
@@ -312,13 +312,25 @@ async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Re
   const os = (url.searchParams.get("os") || "").toLowerCase();
   if (os !== "mac" && os !== "windows") return json(req, { error: "os must be 'mac' or 'windows'" }, 400);
   const info = { key: res.key, customer: res.customer };
-  const body = os === "mac" ? buildMacCommand(info) : buildWindowsBat(info);
-  const filename = os === "mac" ? "Install Shop OS.command" : "Install Shop OS.bat";
-  return new Response(body, {
+  if (os === "mac") {
+    // Zip so the .command keeps its execute bit — a bare download has none
+    // and macOS refuses to run it ("appropriate access privileges").
+    const zip = buildZipWithExecutable("Install Shop OS.command", buildMacCommand(info));
+    return new Response(zip, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": 'attachment; filename="Install Shop OS.zip"',
+        "Cache-Control": "no-store",
+        ...corsResponseHeaders(req),
+      },
+    });
+  }
+  return new Response(buildWindowsBat(info), {
     status: 200,
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": 'attachment; filename="Install Shop OS.bat"',
       "Cache-Control": "no-store",
       ...corsResponseHeaders(req),
     },

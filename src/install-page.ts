@@ -107,8 +107,8 @@ export function buildInstallPage(info: InstallLicenseInfo, bookingUrl: string): 
 <div style="${mono}font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#1f7a8c;margin-bottom:10px;">Mac</div>
 <a style="${btn}margin-bottom:12px;" href="/install-script?key=${k}&amp;os=mac">Download for Mac</a>
 <ol style="margin:0;padding-left:20px;line-height:1.7;color:#4a4d52;font-size:14px;">
-<li>Open Downloads and find <strong>Install Shop OS.command</strong></li>
-<li><strong>Right-click it, choose Open, then Open again</strong> (one-time security step)</li>
+<li>Open Downloads. Safari unpacks the zip for you; in other browsers, double-click <strong>Install Shop OS.zip</strong> first</li>
+<li><strong>Right-click Install Shop OS.command, choose Open, then Open again</strong> (one-time security step)</li>
 <li>Type your Mac login password when asked and follow the window</li>
 </ol>
 </div>
@@ -133,4 +133,87 @@ export function buildInstallPage(info: InstallLicenseInfo, bookingUrl: string): 
 })();
 </script>
 </div></body></html>`;
+}
+
+// ---------- minimal ZIP (store method) with the Unix exec bit ----------
+//
+// A bare .command downloaded over HTTP has no execute bit, so macOS refuses
+// it with "you do not have appropriate access privileges". Archive Utility
+// restores the mode bits recorded in a zip entry's external attributes, so
+// serving the .command inside a zip (mode 0755, version-made-by = Unix)
+// gives the customer a double-clickable file. Store method keeps this
+// dependency-free; the payload is ~1KB.
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(data: Uint8Array): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < data.length; i++) c = CRC_TABLE[(c ^ data[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+export function buildZipWithExecutable(filename: string, content: string): Uint8Array {
+  const enc = new TextEncoder();
+  const name = enc.encode(filename);
+  const data = enc.encode(content);
+  const crc = crc32(data);
+  // Fixed DOS timestamp (2026-08-30 12:00) — deterministic output.
+  const dosTime = (12 << 11) | (0 << 5) | 0;
+  const dosDate = ((2026 - 1980) << 9) | (8 << 5) | 30;
+  const extAttrs = (0o100755 << 16) >>> 0; // regular file, rwxr-xr-x
+
+  const local = new Uint8Array(30 + name.length + data.length);
+  const lv = new DataView(local.buffer);
+  lv.setUint32(0, 0x04034b50, true);
+  lv.setUint16(4, 20, true);          // version needed
+  lv.setUint16(6, 0x0800, true);      // flags: UTF-8 names
+  lv.setUint16(8, 0, true);           // method: store
+  lv.setUint16(10, dosTime, true);
+  lv.setUint16(12, dosDate, true);
+  lv.setUint32(14, crc, true);
+  lv.setUint32(18, data.length, true);
+  lv.setUint32(22, data.length, true);
+  lv.setUint16(26, name.length, true);
+  lv.setUint16(28, 0, true);
+  local.set(name, 30);
+  local.set(data, 30 + name.length);
+
+  const central = new Uint8Array(46 + name.length);
+  const cv = new DataView(central.buffer);
+  cv.setUint32(0, 0x02014b50, true);
+  cv.setUint16(4, (3 << 8) | 20, true); // made by: Unix, spec 2.0
+  cv.setUint16(6, 20, true);
+  cv.setUint16(8, 0x0800, true);
+  cv.setUint16(10, 0, true);
+  cv.setUint16(12, dosTime, true);
+  cv.setUint16(14, dosDate, true);
+  cv.setUint32(16, crc, true);
+  cv.setUint32(20, data.length, true);
+  cv.setUint32(24, data.length, true);
+  cv.setUint16(28, name.length, true);
+  cv.setUint32(38, extAttrs, true);    // external attrs: mode 0755
+  cv.setUint32(42, 0, true);           // local header offset
+  central.set(name, 46);
+
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, 1, true);
+  ev.setUint16(10, 1, true);
+  ev.setUint32(12, central.length, true);
+  ev.setUint32(16, local.length, true);
+
+  const out = new Uint8Array(local.length + central.length + eocd.length);
+  out.set(local, 0);
+  out.set(central, local.length);
+  out.set(eocd, local.length + central.length);
+  return out;
 }

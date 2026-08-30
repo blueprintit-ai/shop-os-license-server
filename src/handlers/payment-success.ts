@@ -60,6 +60,10 @@ export async function handlePaymentSuccess(
     RESEND_API_KEY?: string;
     ASSETS: Fetcher;
     CALENDLY_CONSULTATION_URL?: string;
+    // Booking link for the Foundation setup + training sessions. Falls back to
+    // the consultation link, which is also a one-hour event type, so a missed
+    // env var degrades to a bookable time rather than a broken email.
+    CALENDLY_SETUP_URL?: string;
   },
   input: PaymentSuccessInput,
   options: PaymentSuccessOptions = {}
@@ -136,6 +140,8 @@ export async function handlePaymentSuccess(
         customerName: license.customer,
         licenseKey: license.key,
         pdfUrl: "https://shop-os-license-server.glenn-15d.workers.dev/welcome.pdf",
+        bookingUrl: env.CALENDLY_SETUP_URL ?? env.CALENDLY_CONSULTATION_URL ?? "https://calendly.com/blueprintit/shop-os-foundation-setup",
+        installUrl: `https://shop-os-license-server.glenn-15d.workers.dev/install?key=${encodeURIComponent(license.key)}`,
         attachments: [
           { filename: "shop-os-welcome.pdf", content: welcomeB64 },
           { filename: "shop-os-first-week-guide.pdf", content: firstWeekB64 },

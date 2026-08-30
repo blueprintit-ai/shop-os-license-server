@@ -27,11 +27,12 @@ import { INSTALLS_HTML } from "./installs-html.js";
 import { LicenseRecord, IssueLicenseInput, issueLicense, updateLicenseFlags } from "./license-core.js";
 import { StripeClient } from "./payments/stripe.js";
 import { PayPalClient } from "./payments/paypal.js";
-import { validateCoupon } from "./payments/coupon.js";
+import { validateCoupon, BASE_PRICE_CENTS } from "./payments/coupon.js";
 import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
 import { handlePayPalWebhook } from "./handlers/paypal-webhook.js";
 import { handlePaymentSuccess, renderWelcomePdfBytes } from "./handlers/payment-success.js";
 import { welcomeHtml, welcomeText } from "./email/welcome-template.js";
+import { buildInstallPage, buildInvalidKeyPage, buildMacCommand, buildWindowsBat } from "./install-page.js";
 
 export interface Env {
   LICENSES: KVNamespace;
@@ -64,6 +65,8 @@ export interface Env {
 
   // Calendly booking URL sent in the consultation welcome email
   CALENDLY_CONSULTATION_URL?: string;
+  // Calendly booking URL for the Foundation setup + training sessions
+  CALENDLY_SETUP_URL?: string;
 
   // PayPal
   PAYPAL_CLIENT_ID_TEST?: string;
@@ -280,6 +283,48 @@ async function handleValidate(req: Request, url: URL, env: Env, bumpLastSeen: bo
   });
 }
 
+// ----- Self install: personalized install page + per-customer installer files -----
+
+async function resolveInstallLicense(
+  env: Env,
+  keyRaw: string | null,
+): Promise<{ ok: true; key: string; customer: string } | { ok: false; reason: string }> {
+  const key = (keyRaw || "").trim().toUpperCase();
+  if (!key) return { ok: false, reason: "This link is missing its license key." };
+  const record = await env.LICENSES.get<LicenseRecord>(key, "json");
+  if (!record) return { ok: false, reason: "We could not find a license for this link. Check that the full link from your welcome email was used." };
+  if (record.cancelled_at) return { ok: false, reason: "This license has been revoked." };
+  if (isExpired(record)) return { ok: false, reason: "This license has expired." };
+  return { ok: true, key, customer: record.customer };
+}
+
+async function handleInstallPage(req: Request, url: URL, env: Env): Promise<Response> {
+  const res = await resolveInstallLicense(env, url.searchParams.get("key"));
+  const headers = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...corsResponseHeaders(req) };
+  if (!res.ok) return new Response(buildInvalidKeyPage(res.reason), { status: 404, headers });
+  const bookingUrl = env.CALENDLY_SETUP_URL ?? env.CALENDLY_CONSULTATION_URL ?? "https://calendly.com/blueprintit/shop-os-foundation-setup";
+  return new Response(buildInstallPage({ key: res.key, customer: res.customer }, bookingUrl), { status: 200, headers });
+}
+
+async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Response> {
+  const res = await resolveInstallLicense(env, url.searchParams.get("key"));
+  if (!res.ok) return json(req, { error: res.reason }, 404);
+  const os = (url.searchParams.get("os") || "").toLowerCase();
+  if (os !== "mac" && os !== "windows") return json(req, { error: "os must be 'mac' or 'windows'" }, 400);
+  const info = { key: res.key, customer: res.customer };
+  const body = os === "mac" ? buildMacCommand(info) : buildWindowsBat(info);
+  const filename = os === "mac" ? "Install Shop OS.command" : "Install Shop OS.bat";
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+      ...corsResponseHeaders(req),
+    },
+  });
+}
+
 async function handleIssue(req: Request, env: Env): Promise<Response> {
   const adminCheck = await requireAdmin(req, env);
   if (adminCheck) return adminCheck;
@@ -482,6 +527,8 @@ export default {
           customerName,
           licenseKey,
           pdfUrl: `https://shop-os-license-server.glenn-15d.workers.dev/welcome.pdf`,
+          bookingUrl: env.CALENDLY_SETUP_URL ?? env.CALENDLY_CONSULTATION_URL ?? "https://calendly.com/blueprintit/shop-os-foundation-setup",
+          installUrl: `https://shop-os-license-server.glenn-15d.workers.dev/install?key=${encodeURIComponent(licenseKey)}`,
         };
         if (format === "text") {
           return new Response(welcomeText(input), {
@@ -587,6 +634,8 @@ export default {
           },
         });
       }
+      if (path === "/install" && method === "GET") return handleInstallPage(req, url, env);
+      if (path === "/install-script" && method === "GET") return handleInstallScript(req, url, env);
       if (path === "/validate" && method === "GET") return handleValidate(req, url, env, false);
       if (path === "/refresh" && method === "GET") return handleValidate(req, url, env, true);
       if (path === "/issue" && method === "POST") return handleIssue(req, env);
@@ -699,7 +748,7 @@ export default {
         if (!body.email) return json(req, { error: "Email is required." }, 400);
 
         try {
-          let finalPrice = 100000;
+          let finalPrice = BASE_PRICE_CENTS;
           let promoCode: string | undefined;
           let affiliate: string | null = null;
           let discountAmount: number | undefined;
@@ -708,7 +757,7 @@ export default {
             const stripe = getStripe(env);
             const r = await validateCoupon(stripe, body.code);
             if (!r.valid) return json(req, { error: r.error }, 400);
-            finalPrice = r.finalPrice ?? 100000;
+            finalPrice = r.finalPrice ?? BASE_PRICE_CENTS;
             promoCode = r.code;
             affiliate = r.affiliate ?? null;
             discountAmount = r.discountAmount;
@@ -757,7 +806,7 @@ export default {
             "Customer";
 
           const amountValue = captured.purchase_units?.[0]?.amount?.value;
-          const amountCents = amountValue ? Math.round(parseFloat(amountValue) * 100) : 100000;
+          const amountCents = amountValue ? Math.round(parseFloat(amountValue) * 100) : BASE_PRICE_CENTS;
 
           const result = await handlePaymentSuccess(env, {
             paymentProvider: "paypal",

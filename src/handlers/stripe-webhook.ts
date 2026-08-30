@@ -53,6 +53,7 @@ export interface StripeWebhookEnv {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_WEBHOOK_SECRET_TEST?: string;
   CALENDLY_CONSULTATION_URL?: string;
+  CALENDLY_SETUP_URL?: string;
 }
 
 export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): Promise<Response> {

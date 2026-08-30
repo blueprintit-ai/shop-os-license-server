@@ -39,6 +39,43 @@ describe("handlePaymentSuccess", () => {
     expect(sendEmail).toHaveBeenCalledOnce();
   });
 
+  it("passes CALENDLY_SETUP_URL to the welcome email as the booking link", async () => {
+    const kv = memoryKv();
+    const sendEmail = vi.fn().mockResolvedValue({ id: "em_1" });
+    await handlePaymentSuccess(
+      {
+        LICENSES: kv,
+        RESEND_API_KEY: "re_x",
+        ASSETS: fakeAssets(),
+        CALENDLY_SETUP_URL: "https://calendly.com/blueprintit/shop-os-setup",
+        CALENDLY_CONSULTATION_URL: "https://calendly.com/blueprintit/1-hour-meeting",
+      },
+      { paymentProvider: "stripe", paymentId: "cs_test_booking", customer: "Acme", email: "a@b.co", amount: 150000 },
+      { sendEmail }
+    );
+    const sent = sendEmail.mock.calls[0][1] as { bookingUrl?: string };
+    expect(sent.bookingUrl).toBe("https://calendly.com/blueprintit/shop-os-setup");
+  });
+
+  // A missed env var should still land the customer on a bookable calendar
+  // rather than a broken link, so the consultation URL is the fallback.
+  it("falls back to CALENDLY_CONSULTATION_URL when the setup URL is unset", async () => {
+    const kv = memoryKv();
+    const sendEmail = vi.fn().mockResolvedValue({ id: "em_1" });
+    await handlePaymentSuccess(
+      {
+        LICENSES: kv,
+        RESEND_API_KEY: "re_x",
+        ASSETS: fakeAssets(),
+        CALENDLY_CONSULTATION_URL: "https://calendly.com/blueprintit/1-hour-meeting",
+      },
+      { paymentProvider: "stripe", paymentId: "cs_test_booking_fb", customer: "Acme", email: "a@b.co", amount: 150000 },
+      { sendEmail }
+    );
+    const sent = sendEmail.mock.calls[0][1] as { bookingUrl?: string };
+    expect(sent.bookingUrl).toBe("https://calendly.com/blueprintit/1-hour-meeting");
+  });
+
   it("is idempotent across repeat calls with same paymentId", async () => {
     const kv = memoryKv();
     const sendEmail = vi.fn().mockResolvedValue({ id: "em_1" });

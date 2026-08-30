@@ -697,49 +697,36 @@ pre.ascii-diagram {
   <div class="tagline">Your license, install steps, and first session</div>
 </div>
 
-<p>Thanks for picking up Shop OS Foundation. This document walks you through everything you need to know to install, run your first session, and start using Shop OS in your business.</p>
-<p>Installation takes about 5 minutes total (depending on your internet speed). It's one command that installs everything automatically.</p>
+<p>Your Shop OS Foundation license key is below, along with the onboarding hour we run together and everything worth having ready before it.</p>
+<p>Shop OS is set up with you, not by you. One booking, one hour: the first half we install it on your machine, the second half we train you and your team.</p>
 <h2 data-anchor="§ 01">Your license key</h2>
 <pre><code>SHOP-XXXX-YYYY-ZZZZ
 </code></pre>
-<p>Save it somewhere safe (1Password, a sticky note, a folder in your inbox). You will paste it once during install. We will never ask you to re-enter it after that.</p>
-<h2 data-anchor="§ 02">Before you start: Claude Pro subscription</h2>
-<p><strong>Already have Claude Pro or Max?</strong> You're all set. Skip to the next section.</p>
-<p>If not, sign up at <strong>https://claude.ai</strong> and pick the <strong>Pro</strong> plan (~$20/month from Anthropic, not from us). Pro is the right starting point for Shop OS. As your Shop Brain grows and your team uses it every day, you can upgrade to the <strong>Max</strong> plan (~$100/month) for higher usage limits. Start with Pro.</p>
-<h2 data-anchor="§ 03">Install Shop OS: One Command</h2>
-<p>Open Terminal (Mac: press Cmd+Space, type <code>terminal</code>, press Enter) or PowerShell (Windows: press the Windows key, type <code>powershell</code>, press Enter, then right-click and choose <strong>Run as administrator</strong>).</p>
-<p><strong>Mac</strong> (in Terminal), copy and paste this line:</p>
-<pre><code>/bin/bash -c &quot;$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)&quot;
-</code></pre>
-<p><strong>Windows</strong> (in PowerShell as Administrator), copy and paste this line:</p>
-<pre><code class="language-powershell">&amp;([scriptblock]::Create((iwr -UseBasicParsing 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
-</code></pre>
-<blockquote>
-<p><strong>Heads up, Mac users. Two things Terminal does that look alarming and are not:</strong></p>
+<p>Save it somewhere safe (a password manager, a folder in your inbox). We enter it for you during the call and you will not be asked for it again.</p>
+<h2 data-anchor="§ 02">Your onboarding hour</h2>
+<p><strong>First 30 minutes, setup.</strong> We get on a screen share and set Shop OS up on your machine. Every prerequisite, your license, and your Shop OS Vault in the folder you choose. By the halfway mark you have a working Shop Brain.</p>
+<p><strong>Second 30 minutes, training.</strong> We walk you and whoever else should be in the room through running it day to day: how to seed context, how to ask it real questions, how to put routines on a schedule.</p>
+<p>The booking link is in your welcome email, listed as "Shop OS Foundation Setup". One booking covers both halves. Pick an hour when you will not be pulled onto the floor.</p>
+<h2 data-anchor="§ 03">Before the call</h2>
+<p>Five minutes of prep, so we spend the call on your business instead of on downloads.</p>
 <ol>
-<li><strong>"Possible Malware, Paste Blocked."</strong> Recent versions of macOS warn whenever anything is pasted into Terminal. It is a blanket warning about the act of pasting, not about this command. Click <strong>Paste Anyway</strong>, then press Enter.</li>
-<li><strong>Your password will look like it isn't typing.</strong> You will be asked for your Mac login password near the start, so Homebrew can install developer tools. Terminal deliberately shows nothing as you type: no dots, no cursor movement. Type it anyway and press Enter.</li>
+<li><strong>A Claude subscription.</strong> Shop OS runs on Claude. If you do not have an account yet, set one up at <strong>https://claude.ai/onboarding</strong> and have the login handy.</li>
+<li><strong>Your computer login password.</strong> The install asks for it partway through, so developer tools can be installed. If someone else administers the machine, get them on the call with us.</li>
+<li><strong>A decision on where the vault should live.</strong> Your home folder, Documents, or Desktop if you work on one computer. Inside Dropbox, iCloud Drive, or OneDrive if you want it synced across machines. We create the folder for you on the call, so there is nothing to set up ahead of time.</li>
+<li><strong>Thirty uninterrupted minutes</strong> on the computer you actually work on, with the license key above within reach.</li>
 </ol>
-</blockquote>
-<p>The script will:</p>
+<h2 data-anchor="§ 04">For the training half</h2>
 <ol>
-<li>Install Node.js (if you don't have it)</li>
-<li>Install Claude Code (if you don't have it)</li>
-<li>Install Obsidian (if you don't have it)</li>
-<li>Prompt you for your license key</li>
-<li>Open a folder picker - click to choose where to install, then enter a name for your vault (default: "Shop OS Vault")</li>
+<li><strong>Decide who should be in the room.</strong> Anyone who answers the same questions all day belongs on this call.</li>
+<li><strong>Pull together real material to seed the vault:</strong> past quotes, a few email threads, SOPs, supplier price lists. We use your own documents during the session rather than a demo set.</li>
+<li><strong>Bring the three questions your team asks you most.</strong> We answer them out of your own vault before the call ends.</li>
 </ol>
-<p>The script creates the vault folder for you, so you don't need to make it yourself. Just pick a location when prompted:
-- <strong>One computer only?</strong> Your home folder, Documents, or Desktop.
-- <strong>Multiple computers?</strong> Put it inside Dropbox, iCloud Drive, or OneDrive so it syncs across your machines.</p>
-<p>The whole thing takes about 5 minutes depending on your internet speed.</p>
-<h2 data-anchor="§ 04">After install: your first session</h2>
-<p>The installer prints <code>✓ Shop OS installation complete!</code> and launches Claude Code into your new vault automatically. At the Claude prompt, type:</p>
-<pre><code>/bp-setup
-</code></pre>
-<p>This kicks off a personalized interview that builds your Shop Brain from scratch. It covers 9 topics: your shop, what you build and who buys it, how jobs flow from estimate to delivery, how you price your work, where customers come from, why they pick you, how you communicate, what you're focused on right now, and the tools you use. Takes about 15-20 minutes. Say <strong>next</strong> to move ahead on any topic, or <strong>done</strong> to wrap up early. By the end, your vault reflects your actual business. We send a follow-up document called "Your First Week with Shop OS" that walks you through what to do next.</p>
-<h2 data-anchor="§ 05">Letting your team use Shop OS Chat</h2>
-<p>Inside your vault folder, alongside <code>CLAUDE.md</code> and <code>Raw/</code>, the installer also dropped a file called <code>Shop OS Chat.command</code> (Mac) or <code>Shop OS Chat.bat</code> (Windows). This is the read-only chat your team can use to ask questions about anything in the vault. Suppliers, past jobs, customer history, contract terms, all searchable from a simple chat window.</p>
+<h2 data-anchor="§ 05">What we build in the first half</h2>
+<p>The installer we run together handles Node.js, Claude Code, and Obsidian, picks up your license, and creates your Shop OS Vault in the folder you picked. Then we run <code>/bp-setup</code>, a guided interview that builds your Shop Brain from scratch.</p>
+<p>It covers 9 topics: your shop, what you build and who buys it, how jobs flow from estimate to delivery, how you price your work, where customers come from, why they pick you, how you communicate, what you are focused on right now, and the tools you use. Say <strong>next</strong> to move ahead on any topic, or <strong>done</strong> to wrap up early. By the end, your vault reflects your actual business.</p>
+<p>After the call we send a follow-up document called "Your First Week with Shop OS" that walks you through what to do next.</p>
+<h2 data-anchor="§ 06">Letting your team use Shop OS Chat</h2>
+<p>Inside your vault folder, alongside <code>CLAUDE.md</code> and <code>Raw/</code>, the installer also drops a file called <code>Shop OS Chat.command</code> (Mac) or <code>Shop OS Chat.bat</code> (Windows). This is the read-only chat your team can use to ask questions about anything in the vault. Suppliers, past jobs, customer history, contract terms, all searchable from a simple chat window. We cover it in the training half of the call.</p>
 <h3>How it works</h3>
 <p>Anyone in your shop double-clicks the file. A small terminal window opens (this is normal, it is the chat server running). The default browser opens to <code>localhost</code> with the chat page.</p>
 <p>The first time the person uses it on this computer, the page asks for their name. From then on, the browser remembers and goes straight to the chat. When they end a conversation (either by clicking "End conversation" or closing the tab), the full transcript saves into a <code>Chats/</code> folder inside your vault. You can read those later from Obsidian or ask Claude Code "what did Marco ask about the Smith job last week?"</p>
@@ -748,18 +735,17 @@ pre.ascii-diagram {
 <p>This is on purpose. Your team gets fast answers without any risk of accidentally changing customer records, supplier lists, or contracts. You stay the one with write access via Claude Code.</p>
 <h3>First launch is slower</h3>
 <p>The very first launch takes about 20 to 30 seconds while the chat downloads from GitHub. Every launch after that is instant.</p>
-<h2 data-anchor="§ 06">Need help?</h2>
+<h2 data-anchor="§ 07">Need help?</h2>
 <p>Reply to your welcome email. We will respond ASAP.</p>
-<p>Common first-time issues, already documented:</p>
 <ul>
-<li><strong><code>node: command not found</code></strong> during the install command means you skipped step 2 of the prerequisites. Install Node.js and try again.</li>
-<li><strong>Claude Code app will not launch or cannot find your vault</strong> means you skipped step 3 of the prerequisites or signed in with a different account. Reinstall from claude.ai/code and sign in with the same Claude account from step 1.</li>
-<li><strong><code>License rejected</code></strong> means the key was mistyped. Double-check you pasted the full key including the <code>SHOP-</code> prefix and all three groups of four characters.</li>
-<li><strong>Anything else</strong> gets answered by reply email, usually with a 15-minute screen-share to fix the issue live.</li>
+<li><strong>Cannot make your booked time?</strong> Reschedule from the confirmation email in your calendar invite. No need to ask us first.</li>
+<li><strong>Not sure which computer to use?</strong> Pick the one you work on daily. We can add a second machine later, and syncing the vault through Dropbox, iCloud Drive, or OneDrive is the usual way to do it.</li>
+<li><strong>Someone else runs IT for you?</strong> Forward them this document and put them on the call. The first thirty minutes is all they need to stay for.</li>
+<li><strong>Anything else</strong> gets answered by reply email, or on the call.</li>
 </ul>
 <p>Welcome aboard.</p>
 <div class="signature" style="page-break-inside: avoid; break-inside: avoid;">
-<strong>Glenn Chua</strong>, Founder<br>
+<strong>Blueprint.ai</strong><br>
 Blueprint IT, LLC<br>
 <a href="mailto:glenn@blueprintit.ai">glenn@blueprintit.ai</a><br>
 <a href="https://blueprintit.ai">www.blueprintit.ai</a>

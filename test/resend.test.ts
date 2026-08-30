@@ -11,6 +11,8 @@ describe("sendWelcomeEmail", () => {
       customerName: "Marco",
       licenseKey: "SHOP-AAAA-BBBB-CCCC",
       pdfUrl: "https://x/welcome.pdf",
+      bookingUrl: "https://calendly.com/blueprintit/shop-os-setup",
+      installUrl: "https://shop-os-license-server.glenn-15d.workers.dev/install?key=SHOP-TEST-TEST-TEST",
     }, fetchMock as unknown as typeof fetch);
 
     expect(r.id).toBe("msg_123");
@@ -21,7 +23,9 @@ describe("sendWelcomeEmail", () => {
     expect(headers["Authorization"]).toBe("Bearer re_test");
     expect(headers["Content-Type"]).toBe("application/json");
     const body = JSON.parse((init as RequestInit).body as string);
-    expect(body.from).toContain("glenn@blueprintit.ai");
+    // Sender identity is the brand, not Glenn personally: a product company
+    // reads better than one guy for a $1,500 product.
+    expect(body.from).toBe("Blueprint.ai <glenn@blueprintit.ai>");
     expect(body.to).toBe("marco@example.com");
     expect(body.subject).toContain("Welcome to Shop OS");
     expect(body.html).toContain("SHOP-AAAA-BBBB-CCCC");
@@ -39,6 +43,8 @@ describe("sendWelcomeEmail", () => {
       customerName: "Marco",
       licenseKey: "SHOP-AAAA-BBBB-CCCC",
       pdfUrl: "https://x/welcome.pdf",
+      bookingUrl: "https://calendly.com/blueprintit/shop-os-setup",
+      installUrl: "https://shop-os-license-server.glenn-15d.workers.dev/install?key=SHOP-TEST-TEST-TEST",
       attachments: [
         { filename: "shop-os-welcome.pdf", content: "JVBERi0xLjQK" },
       ],
@@ -59,6 +65,8 @@ describe("sendWelcomeEmail", () => {
       customerName: "Marco",
       licenseKey: "SHOP-AAAA-BBBB-CCCC",
       pdfUrl: "https://x/welcome.pdf",
+      bookingUrl: "https://calendly.com/blueprintit/shop-os-setup",
+      installUrl: "https://shop-os-license-server.glenn-15d.workers.dev/install?key=SHOP-TEST-TEST-TEST",
       attachments: [
         { filename: "shop-os-welcome.pdf", content: "JVBERi0xLjQK" },
         { filename: "shop-os-first-week-guide.pdf", content: "Rmlyc3RXZWVrR3VpZGU=" },
@@ -81,6 +89,8 @@ describe("sendWelcomeEmail", () => {
       customerName: "Marco",
       licenseKey: "SHOP-AAAA-BBBB-CCCC",
       pdfUrl: "https://x/welcome.pdf",
+      bookingUrl: "https://calendly.com/blueprintit/shop-os-setup",
+      installUrl: "https://shop-os-license-server.glenn-15d.workers.dev/install?key=SHOP-TEST-TEST-TEST",
     }, fetchMock as unknown as typeof fetch);
 
     expect(r.id).toBeUndefined();

@@ -28,14 +28,32 @@ echo ""
 # progress noise. Cached for ~5 minutes, long enough for Homebrew to
 # finish without re-prompting.
 if ! command -v brew &> /dev/null; then
-  sudo -v
+  if ! sudo -v; then
+    echo ""
+    echo "✗ This Mac account can't run administrator commands (sudo)."
+    echo "  Homebrew needs an administrator account to install developer tools."
+    echo "  Log in as an administrator (or have whoever manages this Mac join),"
+    echo "  then run this setup again."
+    exit 1
+  fi
 fi
 
 # 1. Check/install Homebrew
 if ! command -v brew &> /dev/null; then
   echo "📦 Installing Homebrew..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  eval "$(/opt/homebrew/bin/brew shellenv)"
+  # Apple Silicon installs to /opt/homebrew, Intel to /usr/local. Put whichever
+  # landed on PATH for the rest of this script.
+  if [ -x /opt/homebrew/bin/brew ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [ -x /usr/local/bin/brew ]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+  if ! command -v brew &> /dev/null; then
+    echo "✗ Homebrew installation failed."
+    echo "  Install it from https://brew.sh, then re-run this script."
+    exit 1
+  fi
 else
   echo "✓ Homebrew found"
 fi
@@ -107,6 +125,21 @@ else
   fi
 fi
 
+# Persist ~/.local/bin on PATH so `claude` works in every NEW Terminal window,
+# not just this script's session (which prepended it above). The official
+# installer usually does this, but not on every shell setup. Idempotent: only
+# appends when the profile doesn't already put .local/bin on PATH.
+if [ -x "$HOME/.local/bin/claude" ]; then
+  PROFILE_FILE="$HOME/.zprofile"
+  case "${SHELL:-}" in
+    */bash) PROFILE_FILE="$HOME/.bash_profile" ;;
+  esac
+  if ! grep -qs '\.local/bin' "$PROFILE_FILE"; then
+    printf '\n# Added by Shop OS setup: Claude Code lives in ~/.local/bin\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$PROFILE_FILE"
+    echo "✓ Added ~/.local/bin to PATH in ${PROFILE_FILE/#$HOME/~} (so 'claude' works in new Terminal windows)"
+  fi
+fi
+
 # 4. Check/install Obsidian
 if ! command -v obsidian &> /dev/null && ! [ -d /Applications/Obsidian.app ]; then
   echo "📦 Installing Obsidian via Homebrew..."
@@ -126,7 +159,15 @@ echo "=========================================="
 echo "✨ Prerequisites complete!"
 echo ""
 
-read -p "Enter your Shop OS license key: " LICENSE_KEY < /dev/tty
+# A personalized self-installer (Install Shop OS.command from the welcome
+# email) bakes the customer's key into SHOPOS_LICENSE_KEY so nothing has to
+# be typed. Interactive prompt stays as the fallback.
+if [ -n "${SHOPOS_LICENSE_KEY:-}" ]; then
+  LICENSE_KEY="$SHOPOS_LICENSE_KEY"
+  echo "✓ License key loaded from your personalized installer"
+else
+  read -p "Enter your Shop OS license key: " LICENSE_KEY < /dev/tty
+fi
 
 if [ -z "$LICENSE_KEY" ]; then
   echo "✗ No license key provided. Exiting."
@@ -155,8 +196,16 @@ echo "Installing Shop OS to: $VAULT_PATH"
 echo ""
 
 # 6. Run Shop OS installer with license key and vault path
-# Redirect stdin to /dev/tty so npx doesn't drain the curl|bash pipe
-npx -y @blueprintit/shop-os-install@latest --license "$LICENSE_KEY" --vault "$VAULT_PATH" --yes < /dev/tty
+# Redirect stdin to /dev/tty so npx doesn't drain the curl|bash pipe.
+# Prefer the npm registry copy; fall back to installing straight from the
+# GitHub repo when the registry copy is unavailable (e.g. registry outage or
+# a package hold), so the install never depends on npm being reachable.
+if npm view @blueprintitai/shop-os-install version >/dev/null 2>&1; then
+  npx -y @blueprintitai/shop-os-install@latest --license "$LICENSE_KEY" --vault "$VAULT_PATH" --yes < /dev/tty
+else
+  echo "npm registry copy unavailable — installing from GitHub instead"
+  npx -y --package=github:blueprintit-ai/shop-os-installer shop-os-install --license "$LICENSE_KEY" --vault "$VAULT_PATH" --yes < /dev/tty
+fi
 
 echo ""
 echo "=========================================="

@@ -774,9 +774,13 @@ function showNewKey(lic) {
   $("#key-dialog").showModal();
 }
 
+// Keep in sync with CALENDLY_SETUP_URL on the Worker. This copy is only used
+// by the manual "Show email template" helper, which has no access to env vars.
+const BOOKING_URL = "https://calendly.com/blueprintit/shop-os-foundation-setup";
+
 function buildEmailTemplate(lic) {
   return [
-    \`Subject: Welcome to Shop OS — your license key inside\`,
+    \`Subject: Welcome to Shop OS, your license key and next steps\`,
     \`\`,
     \`Hi \${lic.customer},\`,
     \`\`,
@@ -784,19 +788,26 @@ function buildEmailTemplate(lic) {
     \`\`,
     \`    \${lic.key}\`,
     \`\`,
-    \`To install:\`,
+    \`Shop OS is set up with you, not by you. One booking, one hour: the\`,
+    \`first half we install it on your machine, the second half we train\`,
+    \`you and your team.\`,
     \`\`,
-    \`1. Sign up for Claude Pro at https://claude.ai (~$20/month). Upgrade to Max (~$100/month) later if your team's daily usage demands it.\`,
-    \`2. Install Claude Code from https://claude.ai/code.\`,
-    \`3. Open Terminal (Mac) or PowerShell (Windows) and paste:\`,
+    \`Book it here (listed as "Shop OS Foundation Setup"): \${BOOKING_URL}\`,
     \`\`,
-    \`    npx @blueprintit/shop-os-install\`,
+    \`Before the call:\`,
     \`\`,
-    \`4. Paste your license key when prompted.\`,
+    \`1. Have a Claude account ready (https://claude.ai/onboarding) and the login handy.\`,
+    \`2. Know your computer login password, or get whoever administers the machine on the call.\`,
+    \`3. Decide where the vault should live (Documents, Desktop, or inside Dropbox/iCloud/OneDrive to sync).\`,
+    \`4. Block 30 uninterrupted minutes on the computer you actually work on.\`,
+    \`\`,
+    \`For the training half, decide who should be in the room and pull\`,
+    \`together some real material to seed the vault: past quotes, email\`,
+    \`threads, SOPs, supplier price lists.\`,
     \`\`,
     \`Reply to this email with any questions.\`,
     \`\`,
-    \`— Blueprint IT\`,
+    \`— Blueprint.ai\`,
   ].join("\\n");
 }
 

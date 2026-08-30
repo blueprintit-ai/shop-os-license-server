@@ -36,7 +36,7 @@ export async function sendWelcomeEmail(
   input: ResendSendInput,
   fetchImpl: typeof fetch = (input, init) => fetch(input, init),
 ): Promise<ResendResponse> {
-  const from = `${input.fromName ?? "Glenn Chua"} <${input.fromAddress ?? "glenn@blueprintit.ai"}>`;
+  const from = `${input.fromName ?? "Blueprint.ai"} <${input.fromAddress ?? "glenn@blueprintit.ai"}>`;
   const body: Record<string, unknown> = {
     from,
     to: input.to,

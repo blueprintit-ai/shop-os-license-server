@@ -2,18 +2,20 @@ export interface WelcomeTemplateInput {
   customerName: string;
   licenseKey: string;
   pdfUrl: string;
+  bookingUrl: string;
+  installUrl: string;
 }
 
 export function welcomeSubject(): string {
-  return "Welcome to Shop OS, your license key and install instructions";
+  return "Welcome to Shop OS, your license key and next steps";
 }
 
 export function welcomeText(input: WelcomeTemplateInput): string {
   return `Hi ${input.customerName},
 
-Thanks for picking up Shop OS Foundation. Your license key is below
-(also embedded in the attached PDF). Everything you need to get installed
-in under 15 minutes follows.
+Your Shop OS Foundation license key is below, along with the onboarding
+hour we run together and the short list of things to have ready before
+it.
 
 
 YOUR LICENSE KEY
@@ -21,52 +23,97 @@ ${"─".repeat(60)}
 
     ${input.licenseKey}
 
-Save it somewhere safe (1Password, a sticky note, an email folder).
-You will paste it once during install. We will never ask you to re-enter
-it after that. Keep this email so you can reference the key later.
+Save it somewhere safe (a password manager, a folder in your inbox). We
+enter it for you during the call and you will not be asked for it again. Keep this email so you can find the key later. It is also
+embedded in the attached PDF.
 
 
-INSTALL SHOP OS
+BOOK YOUR ONBOARDING HOUR
 ${"─".repeat(60)}
 
-The full install guide is attached to this email as a PDF. You can also
-re-download it any time from:
+Shop OS is set up with you, not by you. One booking, one hour, two
+halves:
 
-    ${input.pdfUrl}
+  First 30 minutes, setup. We get on a screen share and set Shop OS up on
+  your machine: every prerequisite, your license, and your Shop OS Vault
+  in the folder you choose. By the halfway mark you have a working Shop
+  Brain.
 
-To start, copy and paste this command in Terminal (Mac) or PowerShell (Windows):
+  Second 30 minutes, training. We walk you and whoever else should be in
+  the room through running it day to day.
 
-Mac:    /bin/bash -c "$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)"
-Windows: &([scriptblock]::Create((iwr -UseBasicParsing 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))
+Pick your time here (look for "Shop OS Foundation Setup"):
 
-Two things Mac users see that look alarming and are not:
+    ${input.bookingUrl}
 
-1. "Possible Malware, Paste Blocked." Recent versions of macOS warn
-   whenever anything is pasted into Terminal. It is a blanket warning
-   about pasting, not about this command. Click Paste Anyway, then
-   press Enter.
+One booking covers both halves. Pick an hour when you will not be pulled
+onto the floor.
 
-2. Your password will look like it isn't typing. You will be asked for
-   your Mac login password near the start, so Homebrew can install
-   developer tools. Terminal deliberately shows nothing as you type:
-   no dots, no cursor movement. Type it anyway and press Enter.
 
-The installer will handle everything:
-• Guide you to choose where to create your Shop OS Vault
-• Install all required tools (Claude Pro, Node.js, Claude Code, Obsidian)
-• Automatically launch Claude Code when done
+INSTALL IT YOURSELF (OPTIONAL)
+${"─".repeat(60)}
 
-When the installer asks for your license key, copy it from above and paste it in.
+Prefer to get hands-on before the call? Your personal install page is
+ready. The installer it gives you already carries your license key, so
+there is nothing to type:
+
+    ${input.installUrl}
+
+Pick Mac or Windows on that page, download your installer, and
+double-click it. If anything gets stuck, stop there and bring it to
+your booked hour: we finish it together. Self-installing does not use
+up your setup and training session, and we still recommend booking it.
+
+
+BEFORE THE CALL
+${"─".repeat(60)}
+
+Five minutes of prep, so we spend the call on your business instead of
+on downloads:
+
+  1. A Claude subscription. Shop OS runs on Claude. If you do not have an
+     account yet, set one up at https://claude.ai/onboarding and have the
+     login handy.
+
+  2. Your computer login password. The install asks for it partway
+     through. If someone else administers the machine, get them on the
+     call with us.
+
+  3. A decision on where the vault should live. Your home folder,
+     Documents, or Desktop if you work on one computer. Inside Dropbox,
+     iCloud Drive, or OneDrive if you want it synced across machines.
+
+  4. Thirty uninterrupted minutes on the computer you actually work on,
+     with the license key above within reach.
+
+
+FOR THE SECOND HALF
+${"─".repeat(60)}
+
+  1. Decide who should be in the room for the training half. Anyone who
+     answers the same questions all day belongs on this call.
+
+  2. Pull together real material to seed the vault: past quotes, a few
+     email threads, SOPs, supplier price lists. We use your own documents
+     during the session rather than a demo set.
+
+  3. Bring the three questions your team asks you most. We answer them
+     out of your own vault before the call ends.
 
 
 NEED HELP?
 ${"─".repeat(60)}
 
-Reply to your welcome email. We will respond ASAP.
+Reply to this email. We will respond ASAP.
+
+The attached PDF covers the same ground and is yours to keep. You can
+also re-download it any time from:
+
+    ${input.pdfUrl}
 
 Welcome aboard.
 
-Glenn Chua, Founder
+Blueprint.ai
 Blueprint IT, LLC
 glenn@blueprintit.ai
 www.blueprintit.ai
@@ -86,11 +133,18 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
   const safeName = escapeHtml(input.customerName);
   const safeKey = escapeHtml(input.licenseKey);
   const safeUrl = escapeAttr(input.pdfUrl);
+  const safeBooking = escapeAttr(input.bookingUrl);
+  const bookingLabel = escapeHtml(input.bookingUrl);
+  const safeInstall = escapeAttr(input.installUrl);
+  const installLabel = escapeHtml(input.installUrl);
 
   // Palette (matches blueprintit.ai/shop-ossi):
   //   paper #f4efe3, paper-2 #ede6d4, paper-line #d9ceb0
   //   ink #0c1e2f, ink-soft #2a3f55, ink-mute #6a7788
   //   cyan #1c6ea4, rust #c2461f
+
+  const p = `font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;`;
+  const marker = `font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;`;
 
   return `<!doctype html>
 <html lang="en">
@@ -121,53 +175,75 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <!-- Title + tagline -->
 <tr><td style="padding:24px 0 4px;">
 <h1 style="font-family:Georgia,serif;font-size:28px;font-weight:600;margin:0;color:#0c1e2f;letter-spacing:-0.01em;line-height:1.1;">Welcome to Shop OS</h1>
-<div style="font-family:Menlo,'SF Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:2.4px;color:#1c6ea4;margin-top:8px;">Your license, install steps, and first session</div>
+<div style="font-family:Menlo,'SF Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:2.4px;color:#1c6ea4;margin-top:8px;">Your license, your onboarding hour, and how to prepare</div>
 </td></tr>
 
 <!-- Greeting -->
 <tr><td style="padding:22px 0 0;">
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 12px;">Hi ${safeName},</p>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 4px;">Thanks for picking up <em style="font-style:italic;color:#1c6ea4;">Shop OS Foundation</em>. Your license key is below (also embedded in the attached PDF). Everything you need to get installed in under 15 minutes follows.</p>
+<p style="${p}margin:0 0 12px;">Hi ${safeName},</p>
+<p style="${p}margin:0 0 4px;">Your <em style="font-style:italic;color:#1c6ea4;">Shop OS Foundation</em> license key is below, along with the onboarding hour we run together and the short list of things to have ready before it.</p>
 </td></tr>
 
 <!-- § 01 License key -->
 <tr><td style="padding:28px 0 0;">
-<div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 01 &nbsp;·&nbsp; Your license key</div>
+<div style="${marker}">§ 01 &nbsp;·&nbsp; Your license key</div>
 <div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:16px 18px;margin:12px 0 10px;font-family:Menlo,'SF Mono',monospace;font-size:16px;letter-spacing:0.08em;color:#0c1e2f;font-weight:600;word-break:break-all;">${safeKey}</div>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 8px;">Save it somewhere safe (1Password, a sticky note, an email folder). You will paste it once during install. We will never ask you to re-enter it.</p>
-<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Keep this email so you can reference the key later. It is also embedded in the attached PDF.</p>
+<p style="${p}margin:8px 0 8px;">Save it somewhere safe (a password manager, a folder in your inbox). We enter it for you during the call and you will not be asked for it again.</p>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Keep this email so you can find the key later. It is also embedded in the attached PDF.</p>
 </td></tr>
 
-<!-- § 02 Install -->
+<!-- § 02 Book the sessions -->
 <tr><td style="padding:28px 0 0;">
-<div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 02 &nbsp;·&nbsp; Install Shop OS</div>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px;">The full install guide is attached to this email as a PDF. You can also <a href="${safeUrl}" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">re-download it any time</a>.</p>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0 0 8px;">To start, copy and paste this command in Terminal (Mac) or PowerShell (Windows):</p>
-<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Mac:</strong></p>
-<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">/bin/bash -c "$(curl -fsSL https://shop-os-license-server.glenn-15d.workers.dev/installer-macos.sh)"</div>
-<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:8px 0 0;"><strong>Windows:</strong></p>
-<div style="background:#ede6d4;border-left:3px solid #1c6ea4;padding:14px 14px;margin:8px 0 12px;font-family:Menlo,'SF Mono',monospace;font-size:11px;color:#0c1e2f;line-height:1.5;word-break:break-all;">&amp;([scriptblock]::Create((iwr -UseBasicParsing 'https://shop-os-license-server.glenn-15d.workers.dev/installer-windows.ps1').Content))</div>
-<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:12px 0 8px;background:#fdf6e3;border-left:3px solid #c2461f;padding:10px 12px;"><strong>Heads up, Mac users — two things Terminal does that look alarming and are not:</strong><br><br><strong>1. &ldquo;Possible Malware, Paste Blocked.&rdquo;</strong> Recent versions of macOS warn whenever anything is pasted into Terminal. It is a blanket warning about pasting, not about this command. Click <strong>Paste Anyway</strong>, then press Enter.<br><br><strong>2. Your password will look like it isn&rsquo;t typing.</strong> You will be asked for your Mac login password near the start, so Homebrew can install developer tools. Terminal deliberately shows nothing as you type &mdash; no dots, no cursor movement. Type it anyway and press Enter.</p>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">The installer will handle everything:</p>
-<ul style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 12px 24px;padding:0;">
-<li style="margin:0 0 6px;">Guide you to choose where to create your Shop OS Vault</li>
-<li style="margin:0 0 6px;">Install all required tools (Claude Pro, Node.js, Claude Code, Obsidian)</li>
-<li style="margin:0 0 6px;">Automatically launch Claude Code when done</li>
-</ul>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:12px 0 8px;">When the installer asks for your license key, copy it from § 01 above and paste it in.</p>
+<div style="${marker}">§ 02 &nbsp;·&nbsp; Book your onboarding hour</div>
+<p style="${p}margin:8px 0 12px;">Shop OS is set up <em style="font-style:italic;">with</em> you, not by you. One booking, one hour, two halves:</p>
+<p style="${p}margin:0 0 10px;"><strong>First 30 minutes, setup.</strong> We get on a screen share and set Shop OS up on your machine: every prerequisite, your license, and your Shop OS Vault in the folder you choose. By the halfway mark you have a working Shop Brain.</p>
+<p style="${p}margin:0 0 14px;"><strong>Second 30 minutes, training.</strong> We walk you and whoever else should be in the room through running it day to day.</p>
+<p style="${p}margin:0 0 8px;"><a href="${safeBooking}" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;font-weight:600;">Pick your time here</a> &nbsp;&mdash;&nbsp; <span style="font-family:Menlo,'SF Mono',monospace;font-size:11px;word-break:break-all;">${bookingLabel}</span></p>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Look for &ldquo;Shop OS Foundation Setup&rdquo;. One booking covers both halves. Pick an hour when you will not be pulled onto the floor.</p>
 </td></tr>
 
-<!-- § 03 Help -->
+<!-- § 03 Self install (optional) -->
 <tr><td style="padding:28px 0 0;">
-<div style="font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#1c6ea4;border-top:1px solid #1c6ea4;padding-top:14px;margin-bottom:6px;">§ 03 &nbsp;·&nbsp; Need help?</div>
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:8px 0 0;">Reply to your welcome email. We will respond ASAP.</p>
+<div style="${marker}">§ 03 &nbsp;·&nbsp; Install it yourself (optional)</div>
+<p style="${p}margin:8px 0 12px;">Prefer to get hands-on before the call? Your personal install page is ready. The installer it gives you already carries your license key, so there is nothing to type.</p>
+<p style="${p}margin:0 0 8px;"><a href="${safeInstall}" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;font-weight:600;">Open your install page</a> &nbsp;&mdash;&nbsp; <span style="font-family:Menlo,'SF Mono',monospace;font-size:11px;word-break:break-all;">${installLabel}</span></p>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Pick Mac or Windows, download, double-click. If anything gets stuck, stop there and bring it to your booked hour: we finish it together. Self-installing does not use up your setup and training session.</p>
+</td></tr>
+
+<!-- § 04 Before setup -->
+<tr><td style="padding:28px 0 0;">
+<div style="${marker}">§ 04 &nbsp;·&nbsp; Before the call</div>
+<p style="${p}margin:8px 0 8px;">Five minutes of prep, so we spend the call on your business instead of on downloads:</p>
+<ol style="${p}margin:8px 0 12px 24px;padding:0;">
+<li style="margin:0 0 8px;"><strong>A Claude subscription.</strong> Shop OS runs on Claude. If you do not have an account yet, set one up at <a href="https://claude.ai/onboarding" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">claude.ai/onboarding</a> and have the login handy.</li>
+<li style="margin:0 0 8px;"><strong>Your computer login password.</strong> The install asks for it partway through. If someone else administers the machine, get them on the call with us.</li>
+<li style="margin:0 0 8px;"><strong>A decision on where the vault should live.</strong> Your home folder, Documents, or Desktop if you work on one computer. Inside Dropbox, iCloud Drive, or OneDrive if you want it synced across machines.</li>
+<li style="margin:0 0 8px;"><strong>Thirty uninterrupted minutes</strong> on the computer you actually work on, with the license key from § 01 within reach.</li>
+</ol>
+</td></tr>
+
+<!-- § 05 Before training -->
+<tr><td style="padding:28px 0 0;">
+<div style="${marker}">§ 05 &nbsp;·&nbsp; For the second half</div>
+<ol style="${p}margin:8px 0 12px 24px;padding:0;">
+<li style="margin:0 0 8px;"><strong>Decide who should be in the room for the training half.</strong> Anyone who answers the same questions all day belongs on this call.</li>
+<li style="margin:0 0 8px;"><strong>Pull together real material to seed the vault:</strong> past quotes, a few email threads, SOPs, supplier price lists. We use your own documents during the session rather than a demo set.</li>
+<li style="margin:0 0 8px;"><strong>Bring the three questions your team asks you most.</strong> We answer them out of your own vault before the call ends.</li>
+</ol>
+</td></tr>
+
+<!-- § 06 Help -->
+<tr><td style="padding:28px 0 0;">
+<div style="${marker}">§ 06 &nbsp;·&nbsp; Need help?</div>
+<p style="${p}margin:8px 0 8px;">Reply to this email. We will respond ASAP.</p>
+<p style="${p}margin:0;">The attached PDF covers the same ground and is yours to keep. You can also <a href="${safeUrl}" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">re-download it any time</a>.</p>
 </td></tr>
 
 <!-- Signature -->
 <tr><td style="padding:32px 0 0;">
-<p style="font-family:Georgia,serif;font-size:15px;line-height:1.55;color:#0c1e2f;margin:0;">Welcome aboard.</p>
+<p style="${p}margin:0;">Welcome aboard.</p>
 <p style="font-family:Georgia,serif;font-size:15px;line-height:1.5;color:#0c1e2f;margin:18px 0 0;">
-<strong style="font-weight:600;">Glenn Chua</strong>, Founder<br/>
+<strong style="font-weight:600;">Blueprint.ai</strong><br/>
 Blueprint<em style="font-style:italic;color:#c2461f;font-weight:600;">IT</em>, LLC<br/>
 <a href="mailto:glenn@blueprintit.ai" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">glenn@blueprintit.ai</a><br/>
 <a href="https://blueprintit.ai" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">www.blueprintit.ai</a>

@@ -14,6 +14,23 @@ try {
   Write-Host "⚠️  Could not set execution policy (may be GPO-locked). Continuing..." -ForegroundColor Yellow
 }
 
+# Also persist RemoteSigned for this user. When Claude Code is installed through
+# npm, `claude` resolves to a claude.ps1 shim, and the default Restricted policy
+# blocks it in every NEW PowerShell window after this one (the Bypass above dies
+# with this process). RemoteSigned is the standard developer setting: local
+# scripts run, downloaded ones must be signed. Skip silently if GPO pins it or
+# the user already runs something at least as permissive.
+try {
+  $current = Get-ExecutionPolicy -Scope CurrentUser
+  if ($current -in @("Undefined", "Restricted", "AllSigned")) {
+    Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+    Write-Host "✓ Execution policy set to RemoteSigned for this user (so 'claude' works in new windows)" -ForegroundColor Green
+  }
+} catch {
+  Write-Host "⚠️  Could not persist execution policy for this user (may be GPO-locked)." -ForegroundColor Yellow
+  Write-Host "    If 'claude' is blocked in a new window later, run: claude.cmd" -ForegroundColor Yellow
+}
+
 # Helper functions must be defined at the top level so they survive into
 # nested scriptblocks (e.g. the Claude Code installer).
 function Check-Command {
@@ -401,7 +418,15 @@ function Invoke-ShopOSInstall {
   Write-Host "✨ Prerequisites complete!" -ForegroundColor Green
   Write-Host ""
 
-  $enteredKey = Read-Host "Enter your Shop OS license key"
+  # A personalized self-installer (Install Shop OS.bat from the welcome email)
+  # bakes the customer's key into SHOPOS_LICENSE_KEY so nothing has to be
+  # typed. Interactive prompt stays as the fallback.
+  if (-not [string]::IsNullOrWhiteSpace($env:SHOPOS_LICENSE_KEY)) {
+    $enteredKey = $env:SHOPOS_LICENSE_KEY
+    Write-Host "✓ License key loaded from your personalized installer" -ForegroundColor Green
+  } else {
+    $enteredKey = Read-Host "Enter your Shop OS license key"
+  }
   if ([string]::IsNullOrWhiteSpace($enteredKey)) {
     throw "No license key provided."
   }
@@ -448,9 +473,27 @@ function Invoke-ShopOSInstall {
     throw "npx not found after Node.js installation.`n`n  Node.js was installed but this terminal cannot see it yet.`n`n  Please close this window, open a new PowerShell, and run the`n  installer command again. Node.js will already be installed."
   }
 
-  # 6. Run Shop OS installer with license key and vault path
+  # 6. Run Shop OS installer with license key and vault path.
+  # Prefer the npm registry copy; fall back to installing straight from the
+  # GitHub repo when the registry copy is unavailable (registry outage or a
+  # package hold), so the install never depends on npm being reachable.
   $global:ShopOS_CurrentStep = "npx_installer"
-  & npx -y @blueprintit/shop-os-install@latest --license "$($global:ShopOS_LicenseKey)" --vault "$vaultPath" --yes
+  & npm view @blueprintitai/shop-os-install version *> $null
+  if ($LASTEXITCODE -eq 0) {
+    & npx -y @blueprintitai/shop-os-install@latest --license "$($global:ShopOS_LicenseKey)" --vault "$vaultPath" --yes
+  } else {
+    Write-Host "  npm registry copy unavailable - installing from GitHub instead" -ForegroundColor DarkGray
+    & npx -y --package=github:blueprintit-ai/shop-os-installer shop-os-install --license "$($global:ShopOS_LicenseKey)" --vault "$vaultPath" --yes
+  }
+  $npxCode = $LASTEXITCODE
+
+  # The installer prints its own customer-facing reason before exiting non-zero
+  # (rejected license, GitHub unreachable, ...). Without this check a failed run
+  # fell through to a misleading "vault folder not found / check Dropbox" error,
+  # or, when the folder already existed, to a false "Setup complete".
+  if ($npxCode -ne 0) {
+    throw "Shop OS installer did not complete (exit code $npxCode).`n`n  See the message above for the reason, fix it, then run this setup again.`n  Nothing was finalized, so re-running is safe."
+  }
 
   # Poll for the vault folder to exist. PowerShell's & operator on npx.cmd can
   # return before its grandchildren (cmd.exe -> node.exe) finish writing files,

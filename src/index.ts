@@ -30,7 +30,7 @@ import { PayPalClient } from "./payments/paypal.js";
 import { validateCoupon, BASE_PRICE_CENTS } from "./payments/coupon.js";
 import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
 import { handlePayPalWebhook } from "./handlers/paypal-webhook.js";
-import { handlePaymentSuccess, renderWelcomePdfBytes } from "./handlers/payment-success.js";
+import { handlePaymentSuccess, renderWelcomePdfBytes, sendWelcomeEmailForLicense } from "./handlers/payment-success.js";
 import { welcomeHtml, welcomeText } from "./email/welcome-template.js";
 import { buildInstallPage, buildInvalidKeyPage, buildMacCommand, buildWindowsBat } from "./install-page.js";
 
@@ -634,6 +634,24 @@ export default {
           },
         });
       }
+      // Admin: manually (re)send the welcome email for a license key. Uses the
+      // exact production pipeline (PDF attachments, Resend), ignoring the
+      // welcomeEmailSentAt flag — a manual resend is deliberate.
+      if (method === "POST" && path === "/admin/send-welcome-email") {
+        const adminCheck = await requireAdmin(req, env);
+        if (adminCheck) return adminCheck;
+        const key = (url.searchParams.get("key") || "").trim().toUpperCase();
+        if (!key) return json(req, { error: "key query param required" }, 400);
+        const record = await env.LICENSES.get<LicenseRecord>(key, "json");
+        if (!record) return json(req, { error: "license not found" }, 404);
+        const result = await sendWelcomeEmailForLicense(env, record);
+        return json(
+          req,
+          { ok: result.ok, to: record.email, ...(result.error ? { error: result.error } : {}) },
+          result.ok ? 200 : 502,
+        );
+      }
+
       if (path === "/install" && method === "GET") return handleInstallPage(req, url, env);
       if (path === "/install-script" && method === "GET") return handleInstallScript(req, url, env);
       if (path === "/validate" && method === "GET") return handleValidate(req, url, env, false);

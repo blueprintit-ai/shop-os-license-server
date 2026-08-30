@@ -130,35 +130,52 @@ export async function handlePaymentSuccess(
   // Send email only if not already sent
   let emailResult: { ok: boolean; error?: string } = { ok: true };
   if (!license.metadata?.welcomeEmailSentAt) {
-    if (env.RESEND_API_KEY) {
-      const [welcomeB64, firstWeekB64] = await Promise.all([
-        generateWelcomePdfWithFallback(env, license.key),
-        loadAssetBase64(env.ASSETS, "shop-os-first-week-guide.pdf"),
-      ]);
-      const send = await sendEmail(env.RESEND_API_KEY, {
-        to: license.email,
-        customerName: license.customer,
-        licenseKey: license.key,
-        pdfUrl: "https://shop-os-license-server.glenn-15d.workers.dev/welcome.pdf",
-        bookingUrl: env.CALENDLY_SETUP_URL ?? env.CALENDLY_CONSULTATION_URL ?? "https://calendly.com/blueprintit/shop-os-foundation-setup",
-        installUrl: `https://shop-os-license-server.glenn-15d.workers.dev/install?key=${encodeURIComponent(license.key)}`,
-        attachments: [
-          { filename: "shop-os-welcome.pdf", content: welcomeB64 },
-          { filename: "shop-os-first-week-guide.pdf", content: firstWeekB64 },
-        ],
-      });
-      if (send.error) {
-        emailResult = { ok: false, error: send.error.message };
-      } else {
-        await markEmailSent(env.LICENSES, license.key);
-        emailResult = { ok: true };
-      }
-    } else {
-      emailResult = { ok: false, error: "RESEND_API_KEY not configured." };
-    }
+    emailResult = await sendWelcomeEmailForLicense(env, license, options);
   }
 
   return { license, alreadyIssued, emailResult };
+}
+
+// Build and send the full welcome email (per-customer PDF + first-week guide
+// attachments, booking link, personal install link) for an existing license.
+// Used by the payment-success flow above and by the admin manual-resend
+// endpoint. Marks welcomeEmailSentAt on success.
+export async function sendWelcomeEmailForLicense(
+  env: {
+    LICENSES: KVNamespace;
+    RESEND_API_KEY?: string;
+    ASSETS: Fetcher;
+    CALENDLY_CONSULTATION_URL?: string;
+    CALENDLY_SETUP_URL?: string;
+  },
+  license: LicenseRecord,
+  options: PaymentSuccessOptions = {},
+): Promise<{ ok: boolean; error?: string }> {
+  const sendEmail = options.sendEmail ?? sendWelcomeEmail;
+  if (!env.RESEND_API_KEY) {
+    return { ok: false, error: "RESEND_API_KEY not configured." };
+  }
+  const [welcomeB64, firstWeekB64] = await Promise.all([
+    generateWelcomePdfWithFallback(env, license.key),
+    loadAssetBase64(env.ASSETS, "shop-os-first-week-guide.pdf"),
+  ]);
+  const send = await sendEmail(env.RESEND_API_KEY, {
+    to: license.email,
+    customerName: license.customer,
+    licenseKey: license.key,
+    pdfUrl: "https://shop-os-license-server.glenn-15d.workers.dev/welcome.pdf",
+    bookingUrl: env.CALENDLY_SETUP_URL ?? env.CALENDLY_CONSULTATION_URL ?? "https://calendly.com/blueprintit/shop-os-foundation-setup",
+    installUrl: `https://shop-os-license-server.glenn-15d.workers.dev/install?key=${encodeURIComponent(license.key)}`,
+    attachments: [
+      { filename: "shop-os-welcome.pdf", content: welcomeB64 },
+      { filename: "shop-os-first-week-guide.pdf", content: firstWeekB64 },
+    ],
+  });
+  if (send.error) {
+    return { ok: false, error: send.error.message };
+  }
+  await markEmailSent(env.LICENSES, license.key);
+  return { ok: true };
 }
 
 // Handle a Consultation purchase: no license issuance, just send the

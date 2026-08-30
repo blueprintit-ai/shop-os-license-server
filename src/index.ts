@@ -141,6 +141,27 @@ async function logFunnelEvent(
   }
 }
 
+// Beacon hit by the /bp-setup skill (via WebFetch — curl isn't on the vault
+// permission allowlist) when the onboarding interview completes. Records a
+// success/bp_setup_complete event so the dashboard distinguishes "installed"
+// from "onboarded". GET because WebFetch can't POST; the key alone is the
+// credential, same as every other public license endpoint.
+async function handleSetupComplete(req: Request, url: URL, env: Env): Promise<Response> {
+  const res = await resolveInstallLicense(env, url.searchParams.get("key"));
+  if (!res.ok) return json(req, { ok: false, error: res.reason }, 404);
+  const log: InstallLog = {
+    license_key: res.key,
+    timestamp: new Date().toISOString(),
+    status: "success",
+    step: "bp_setup_complete",
+    machine: { source: "bp-setup" },
+  };
+  await env.LICENSES.put(`install-log:${res.key}:${Date.now()}`, JSON.stringify(log), {
+    expirationTtl: 180 * 24 * 60 * 60,
+  });
+  return json(req, { ok: true });
+}
+
 // Public, boolean-only: has this key ever reported a successful install?
 // Polled by the /install page to flip to its success state. Reveals nothing
 // beyond what holding the key already grants.
@@ -784,6 +805,7 @@ export default {
 
       if (path === "/install" && method === "GET") return handleInstallPage(req, url, env);
       if (path === "/install-status" && method === "GET") return handleInstallStatus(req, url, env);
+      if (path === "/setup-complete" && method === "GET") return handleSetupComplete(req, url, env);
       if (method === "POST" && path === "/admin/run-failure-sweep") {
         const adminCheck = await requireAdmin(req, env);
         if (adminCheck) return adminCheck;

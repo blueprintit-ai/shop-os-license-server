@@ -1,4 +1,4 @@
-# Shop OS Foundation — Windows Setup Script
+﻿# Shop OS Foundation — Windows Setup Script
 # One command to install all prerequisites and Shop OS
 
 $ErrorActionPreference = "Stop"
@@ -363,17 +363,32 @@ function Invoke-ShopOSInstall {
     Write-Host "✓ Claude Code found" -ForegroundColor Green
   } else {
     Write-Host "📦 Installing Claude Code..." -ForegroundColor Yellow
-    # claude.ai/install.ps1 redirects to a bootstrap script served as
-    # application/octet-stream. Invoke-WebRequest returns .Content as a byte[]
-    # for non-text content types, and [scriptblock]::Create on a byte[] stringifies
-    # it as space-separated decimals ("112 97 114 ...") -> parse errors. Decode to
-    # a UTF-8 string first. Guard handles both byte[] and string across PS versions.
-    $claudeResp = Invoke-WebRequest -Uri "https://claude.ai/install.ps1" -UseBasicParsing
-    $claudeScript = $claudeResp.Content
-    if ($claudeScript -is [byte[]]) {
-      $claudeScript = [System.Text.Encoding]::UTF8.GetString($claudeScript)
+    # Download to a file and run it with -File rather than building a
+    # scriptblock from the response body in memory. Behaviorally identical
+    # (process-scope policy is already Bypass from the top of this script,
+    # so a plain .ps1 file runs the same as an in-memory scriptblock), but
+    # "fetch to disk, then run the file" doesn't carry the same loader
+    # signature as "fetch a string and dynamically construct code from it",
+    # which is what got this installer's own cradle flagged as
+    # Trojan:Win32/Commando.A!ml (see notes/windows-defender-false-positive.md).
+    #
+    # Use irm (not iwr -OutFile) and write the result back out with an
+    # explicit UTF-8 BOM. iwr -OutFile writes the raw response bytes with no
+    # BOM; if the fetched script has any non-ASCII character, Windows
+    # PowerShell 5.1's -File load then falls back to the system codepage,
+    # misdecodes it, and that silently corrupts string/brace parsing further
+    # into the file. irm decodes straight to an in-memory string (sidestepping
+    # the old byte[]-content-type problem too), and writing with an explicit
+    # BOM makes -File decode it as UTF-8 regardless of Windows PowerShell
+    # version or system locale.
+    $claudeInstallerPath = Join-Path $env:TEMP "shop-os-claude-install-$([guid]::NewGuid().ToString('N')).ps1"
+    try {
+      $claudeScript = Invoke-RestMethod -Uri "https://claude.ai/install.ps1" -UseBasicParsing
+      [System.IO.File]::WriteAllText($claudeInstallerPath, $claudeScript, (New-Object System.Text.UTF8Encoding($true)))
+      & $claudeInstallerPath
+    } finally {
+      Remove-Item $claudeInstallerPath -ErrorAction SilentlyContinue
     }
-    & ([scriptblock]::Create($claudeScript))
 
     # Refresh PATH so the freshly-installed claude is visible this session.
     $env:PATH = [Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH","User")

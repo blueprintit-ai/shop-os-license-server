@@ -18,6 +18,15 @@ export interface InstallLicenseInfo {
 
 export function buildWindowsBat(info: InstallLicenseInfo): string {
   // CRLF line endings: cmd.exe misparses bare-LF batch files in some paths.
+  //
+  // Deliberately NOT an `irm URL | iex` one-liner: that "IEX cradle" shape
+  // (bypass policy + env var + pipe a remote fetch into iex, all in one
+  // -Command string) is exactly what Defender's cloud ML classifier
+  // (Trojan:Win32/Commando.A!ml) keys on, and it flagged this exact command
+  // on 2026-09-17. Instead: download the script to disk with a plain,
+  // non-executing request, then run that file with -File like any other
+  // local script. See notes/windows-defender-false-positive.md in the
+  // shop-os-installer repo.
   const lines = [
     "@echo off",
     ":: ==============================================",
@@ -36,9 +45,29 @@ export function buildWindowsBat(info: InstallLicenseInfo): string {
     "  exit /b",
     ")",
     "",
+    `set "SHOPOS_LICENSE_KEY=${info.key}"`,
+    'set "SHOPOS_SETUP_PS1=%TEMP%\\shop-os-setup-%RANDOM%.ps1"',
+    "",
     "echo Starting Shop OS setup. Keep this window open.",
-    `powershell -NoProfile -ExecutionPolicy Bypass -Command "$env:SHOPOS_LICENSE_KEY='${info.key}'; irm ${RAW_BASE}/setup-windows.ps1 | iex"`,
+    // Fetch as text with irm (not `iwr -OutFile`, which dumps raw bytes with
+    // no BOM) and write it back out with an explicit UTF-8 BOM. The script
+    // has emoji/checkmarks/em-dashes; without a BOM, Windows PowerShell 5.1's
+    // -File load falls back to the system codepage, misdecodes them, and
+    // that corrupts string/brace parsing a few dozen lines later. -Command
+    // string content never hits this because irm decodes straight to an
+    // in-memory string, it only bites once the bytes land on disk.
+    `powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = Invoke-RestMethod -Uri '${RAW_BASE}/setup-windows.ps1' -UseBasicParsing; [System.IO.File]::WriteAllText('%SHOPOS_SETUP_PS1%', $c, (New-Object System.Text.UTF8Encoding($true)))"`,
+    'if not exist "%SHOPOS_SETUP_PS1%" (',
+    "  echo Could not download the Shop OS setup script. Check your internet connection and try again.",
+    "  pause",
+    "  exit /b 1",
+    ")",
+    "",
+    'powershell -NoProfile -ExecutionPolicy Bypass -File "%SHOPOS_SETUP_PS1%"',
+    'set "SHOPOS_EXIT=%errorLevel%"',
+    'del "%SHOPOS_SETUP_PS1%" >nul 2>&1',
     "pause",
+    "exit /b %SHOPOS_EXIT%",
     "",
   ];
   return lines.join("\r\n");

@@ -3,12 +3,14 @@ import { issueLicense, markEmailSent, LicenseRecord } from "../license-core";
 import {
   sendWelcomeEmail,
   sendConsultationEmail,
+  sendLeadHandlerEmail,
   ResendSendInput,
   ResendConsultationSendInput,
+  ResendLeadHandlerSendInput,
   ResendResponse,
 } from "../email/resend";
 
-export type ProductType = "foundation" | "consultation";
+export type ProductType = "foundation" | "consultation" | "lead-handler" | "bundle";
 
 export interface PaymentSuccessInput {
   paymentProvider: "stripe" | "paypal";
@@ -29,11 +31,11 @@ const LIFETIME_PROMO_CODES = new Set(["FOUNDING50"]);
 
 export function deriveFlagsFromPromo(
   promoCode: string | undefined
-): { lifetimeUpdates: boolean; cohort: string } {
+): { lifetimeUpdates: boolean } {
   if (promoCode && LIFETIME_PROMO_CODES.has(promoCode.toUpperCase())) {
-    return { lifetimeUpdates: true, cohort: "founding-50" };
+    return { lifetimeUpdates: true };
   }
-  return { lifetimeUpdates: false, cohort: "" };
+  return { lifetimeUpdates: false };
 }
 
 export interface PaymentSuccessResult {
@@ -49,9 +51,15 @@ type SendConsultationEmailFn = (
   input: ResendConsultationSendInput,
 ) => Promise<ResendResponse>;
 
+type SendLeadHandlerEmailFn = (
+  apiKey: string,
+  input: ResendLeadHandlerSendInput,
+) => Promise<ResendResponse>;
+
 export interface PaymentSuccessOptions {
   sendEmail?: SendEmailFn;
   sendConsultation?: SendConsultationEmailFn;
+  sendLeadHandler?: SendLeadHandlerEmailFn;
 }
 
 export async function handlePaymentSuccess(
@@ -77,6 +85,16 @@ export async function handlePaymentSuccess(
     return handleConsultationSuccess(env, input, options);
   }
 
+  // Lead Handler branch: no license issued — a booking-link email for the
+  // done-for-you install kickoff call. Mirrors the consultation flow.
+  if (productType === "lead-handler") {
+    return handleLeadHandlerSuccess(env, input, options);
+  }
+
+  // From here down: "foundation" and "bundle". Bundle = Foundation license +
+  // welcome email, PLUS the Lead Handler install email (guarded separately
+  // below so webhook retries stay idempotent).
+
   const sendEmail = options.sendEmail ?? sendWelcomeEmail;
   const idemKey = `payment:${input.paymentProvider}:${input.paymentId}`;
   const existingKey = await env.LICENSES.get(idemKey);
@@ -94,7 +112,6 @@ export async function handlePaymentSuccess(
         customer: input.customer,
         email: input.email,
         lifetimeUpdates: flags.lifetimeUpdates,
-        cohort: flags.cohort,
         metadata: {
           paymentProvider: input.paymentProvider,
           paymentId: input.paymentId,
@@ -102,6 +119,7 @@ export async function handlePaymentSuccess(
           promoCode: input.promoCode,
           affiliate: input.affiliate ?? undefined,
           discountAmount: input.discountAmount,
+          ...(productType === "bundle" ? { productType: "bundle" } : {}),
         },
       });
       await env.LICENSES.put(idemKey, license.key);
@@ -114,7 +132,6 @@ export async function handlePaymentSuccess(
       customer: input.customer,
       email: input.email,
       lifetimeUpdates: flags.lifetimeUpdates,
-      cohort: flags.cohort,
       metadata: {
         paymentProvider: input.paymentProvider,
         paymentId: input.paymentId,
@@ -122,6 +139,7 @@ export async function handlePaymentSuccess(
         promoCode: input.promoCode,
         affiliate: input.affiliate ?? undefined,
         discountAmount: input.discountAmount,
+        ...(productType === "bundle" ? { productType: "bundle" } : {}),
       },
     });
     await env.LICENSES.put(idemKey, license.key);
@@ -133,7 +151,95 @@ export async function handlePaymentSuccess(
     emailResult = await sendWelcomeEmailForLicense(env, license, options);
   }
 
+  // Bundle: also send the Lead Handler install email, exactly once per
+  // payment. KV-guarded independently of the welcome email so a retry after
+  // a partial failure re-sends only what never went out.
+  if (productType === "bundle") {
+    const lhKey = `leadhandler-email:${input.paymentProvider}:${input.paymentId}`;
+    const alreadySent = await env.LICENSES.get(lhKey);
+    if (!alreadySent) {
+      const lhResult = await sendLeadHandlerInstallEmail(env, input, options);
+      if (lhResult.ok) {
+        await env.LICENSES.put(lhKey, new Date().toISOString());
+      } else if (emailResult.ok) {
+        // Surface the failure without masking a welcome-email error.
+        emailResult = lhResult;
+      }
+    }
+  }
+
   return { license, alreadyIssued, emailResult };
+}
+
+function leadHandlerBookingUrl(env: {
+  CALENDLY_CONSULTATION_URL?: string;
+  CALENDLY_SETUP_URL?: string;
+}): string {
+  return (
+    env.CALENDLY_SETUP_URL ??
+    env.CALENDLY_CONSULTATION_URL ??
+    "https://calendly.com/blueprintit/shop-os-foundation-setup"
+  );
+}
+
+async function sendLeadHandlerInstallEmail(
+  env: {
+    RESEND_API_KEY?: string;
+    CALENDLY_CONSULTATION_URL?: string;
+    CALENDLY_SETUP_URL?: string;
+  },
+  input: PaymentSuccessInput,
+  options: PaymentSuccessOptions = {},
+): Promise<{ ok: boolean; error?: string }> {
+  const send = options.sendLeadHandler ?? sendLeadHandlerEmail;
+  if (!env.RESEND_API_KEY) {
+    return { ok: false, error: "RESEND_API_KEY not configured." };
+  }
+  if (!input.email) {
+    return { ok: false, error: "No customer email on payment." };
+  }
+  const customerName = input.customer && input.customer !== "Customer"
+    ? input.customer
+    : input.email.split("@")[0];
+  const result = await send(env.RESEND_API_KEY, {
+    to: input.email,
+    customerName,
+    bookingUrl: leadHandlerBookingUrl(env),
+  });
+  if (result.error) {
+    return { ok: false, error: result.error.message };
+  }
+  return { ok: true };
+}
+
+// Handle a standalone Lead Handler purchase: no license issuance, just the
+// install-kickoff email. Idempotent via the same KV key shape as the other
+// product types so /payment-status works unchanged.
+async function handleLeadHandlerSuccess(
+  env: {
+    LICENSES: KVNamespace;
+    RESEND_API_KEY?: string;
+    CALENDLY_CONSULTATION_URL?: string;
+    CALENDLY_SETUP_URL?: string;
+  },
+  input: PaymentSuccessInput,
+  options: PaymentSuccessOptions = {},
+): Promise<PaymentSuccessResult> {
+  const idemKey = `payment:${input.paymentProvider}:${input.paymentId}`;
+  const sentinel = `lead-handler-${input.email || input.paymentId}`;
+
+  const existing = await env.LICENSES.get(idemKey);
+  if (existing) {
+    // Already processed. Don't re-send the email; webhook retries are noise.
+    return { license: null, alreadyIssued: true, emailResult: { ok: true } };
+  }
+
+  // Write the idempotency record FIRST so a racing retry sees it. The email
+  // send below is best-effort: if Resend fails, Glenn can resend manually.
+  await env.LICENSES.put(idemKey, sentinel);
+
+  const emailResult = await sendLeadHandlerInstallEmail(env, input, options);
+  return { license: null, alreadyIssued: false, emailResult };
 }
 
 // Build and send the full welcome email (per-customer PDF + first-week guide

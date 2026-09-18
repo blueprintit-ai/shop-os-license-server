@@ -85,7 +85,10 @@ export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): 
   // Missing or unknown values fall back to "foundation" so any pre-existing
   // sessions in flight during deploy keep going through the original path.
   const rawType = full.metadata?.productType;
-  const productType: ProductType = rawType === "consultation" ? "consultation" : "foundation";
+  const productType: ProductType =
+    rawType === "consultation" || rawType === "lead-handler" || rawType === "bundle"
+      ? rawType
+      : "foundation";
 
   await handlePaymentSuccess(env, {
     paymentProvider: "stripe",

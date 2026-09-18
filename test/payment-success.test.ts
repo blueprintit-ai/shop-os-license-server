@@ -143,7 +143,7 @@ describe("handlePaymentSuccess", () => {
     expect(await kv.get("payment:stripe:cs_orphan")).toBe(second.license.key); // mapping updated
   });
 
-  it("auto-flags FOUNDING50 redeemers with lifetimeUpdates + cohort='founding-50'", async () => {
+  it("auto-flags FOUNDING50 redeemers with lifetimeUpdates", async () => {
     const kv = memoryKv();
     const sendEmail = vi.fn().mockResolvedValue({ id: "em_1" });
     const r = await handlePaymentSuccess(
@@ -152,7 +152,6 @@ describe("handlePaymentSuccess", () => {
       { sendEmail }
     );
     expect(r.license.lifetimeUpdates).toBe(true);
-    expect(r.license.cohort).toBe("founding-50");
   });
 
   it("does not auto-flag non-FOUNDING50 promos (e.g. INSIDER100)", async () => {
@@ -164,7 +163,6 @@ describe("handlePaymentSuccess", () => {
       { sendEmail }
     );
     expect(r.license.lifetimeUpdates).toBe(false);
-    expect(r.license.cohort).toBe("");
   });
 
   it("deriveFlagsFromPromo is case-insensitive on FOUNDING50", () => {

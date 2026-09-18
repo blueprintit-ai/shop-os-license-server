@@ -234,10 +234,8 @@ export const ADMIN_HTML = `<!DOCTYPE html>
         <option value="revoked">Revoked only</option>
       </select>
       <select id="filter-cohort">
-        <option value="all">All cohorts</option>
+        <option value="all">All licenses</option>
         <option value="lifetime">Lifetime updates</option>
-        <option value="founding-50">Founding 50</option>
-        <option value="none">No cohort</option>
       </select>
     </div>
     <div id="bulk-bar" class="bulk-bar">
@@ -254,9 +252,7 @@ export const ADMIN_HTML = `<!DOCTYPE html>
             <th>Key</th>
             <th>Customer</th>
             <th>Email</th>
-            <th>Cohort</th>
             <th>Lifetime</th>
-            <th>Entitlements</th>
             <th>Created</th>
             <th>Last seen</th>
             <th>Activations</th>
@@ -278,13 +274,11 @@ export const ADMIN_HTML = `<!DOCTYPE html>
       <label><span>Customer name</span><input name="customer" required></label>
       <label><span>Customer email</span><input name="email" type="email" required></label>
       <label><span>Product</span><input name="product" value="shop-os-foundation"></label>
-      <label><span>Entitlements (comma separated)</span><input name="entitlements" value="foundation"></label>
       <label><span>Valid until (ISO date, leave blank for perpetual)</span><input name="valid_until" placeholder="e.g. 2027-05-24T00:00:00.000Z"></label>
       <label style="flex-direction:row;align-items:center;gap:10px;">
         <input type="checkbox" name="lifetimeUpdates" style="width:auto;">
         <span>Lifetime updates (grants Founding 50 benefits)</span>
       </label>
-      <label><span>Cohort tag (optional)</span><input name="cohort" placeholder="e.g. partner, beta"></label>
       <div id="issue-error" class="error" hidden></div>
     </div>
     <div class="foot">
@@ -317,7 +311,6 @@ export const ADMIN_HTML = `<!DOCTYPE html>
         <input type="checkbox" name="lifetimeUpdates" style="width:auto;">
         <span>Lifetime updates (Founding 50 benefits)</span>
       </label>
-      <label><span>Cohort tag (free text — e.g. "founding-50", "partner", "beta")</span><input name="cohort" placeholder=""></label>
       <div id="edit-error" class="error" hidden></div>
     </div>
     <div class="foot">
@@ -444,10 +437,8 @@ function render() {
     if (filter === "active" && s !== "active") return false;
     if (filter === "revoked" && s !== "revoked") return false;
     if (cohortFilter === "lifetime" && !l.lifetimeUpdates) return false;
-    if (cohortFilter === "founding-50" && (l.cohort || "") !== "founding-50") return false;
-    if (cohortFilter === "none" && (l.cohort || "")) return false;
     if (!q) return true;
-    return (l.key + " " + (l.customer || "") + " " + (l.email || "") + " " + (l.cohort || "")).toLowerCase().includes(q);
+    return (l.key + " " + (l.customer || "") + " " + (l.email || "")).toLowerCase().includes(q);
   });
 
   // sort: active first, then by created_at desc
@@ -461,13 +452,11 @@ function render() {
   // stats
   const active = STATE.licenses.filter(l => statusOf(l) === "active").length;
   const revoked = STATE.licenses.filter(l => statusOf(l) === "revoked").length;
-  const founding = STATE.licenses.filter(l => (l.cohort || "") === "founding-50").length;
   const lifetime = STATE.licenses.filter(l => !!l.lifetimeUpdates).length;
   $("#stats").innerHTML = [
     \`<div class="stat-card"><div class="label">Total</div><div class="value">\${STATE.licenses.length}</div></div>\`,
     \`<div class="stat-card"><div class="label">Active</div><div class="value">\${active}</div></div>\`,
     \`<div class="stat-card"><div class="label">Revoked</div><div class="value">\${revoked}</div></div>\`,
-    \`<div class="stat-card"><div class="label">Founding 50</div><div class="value">\${founding} / 50</div></div>\`,
     \`<div class="stat-card"><div class="label">Lifetime updates</div><div class="value">\${lifetime}</div></div>\`,
   ].join("");
 
@@ -481,12 +470,7 @@ function render() {
   $("#empty").hidden = true;
   tbody.innerHTML = list.map(l => {
     const s = statusOf(l);
-    const ents = (l.entitlements || []).map(e => \`<span class="pill entitlement">\${escapeHtml(e)}</span>\`).join("");
     const isActive = s === "active";
-    const cohort = l.cohort || "";
-    const cohortCell = cohort
-      ? \`<span class="pill \${cohort === "founding-50" ? "status-active" : "entitlement"}">\${escapeHtml(cohort)}</span>\`
-      : \`<span class="muted">—</span>\`;
     const lifetimeCell = l.lifetimeUpdates
       ? \`<span class="pill status-active">yes</span>\`
       : \`<span class="muted">—</span>\`;
@@ -501,9 +485,7 @@ function render() {
       <td><span class="key" data-key="\${l.key}" title="Click to copy">\${l.key}</span></td>
       <td><strong>\${escapeHtml(l.customer || "")}</strong></td>
       <td class="muted">\${escapeHtml(l.email || "")}</td>
-      <td>\${cohortCell}</td>
       <td>\${lifetimeCell}</td>
-      <td>\${ents}</td>
       <td class="muted">\${fmtDate(l.created_at)}</td>
       <td class="muted">\${fmtDate(l.last_seen)}</td>
       <td class="muted">\${l.activations || 0}</td>
@@ -548,10 +530,8 @@ function currentlyVisibleList() {
     if (filter === "active" && s !== "active") return false;
     if (filter === "revoked" && s !== "revoked") return false;
     if (cohortFilter === "lifetime" && !l.lifetimeUpdates) return false;
-    if (cohortFilter === "founding-50" && (l.cohort || "") !== "founding-50") return false;
-    if (cohortFilter === "none" && (l.cohort || "")) return false;
     if (!q) return true;
-    return (l.key + " " + (l.customer || "") + " " + (l.email || "") + " " + (l.cohort || "")).toLowerCase().includes(q);
+    return (l.key + " " + (l.customer || "") + " " + (l.email || "")).toLowerCase().includes(q);
   });
 }
 
@@ -665,7 +645,6 @@ $("#tbody").addEventListener("click", (e) => {
     if (!lic) return;
     $("#edit-key").textContent = key;
     $("#edit-form").querySelector("[name=lifetimeUpdates]").checked = !!lic.lifetimeUpdates;
-    $("#edit-form").querySelector("[name=cohort]").value = lic.cohort || "";
     $("#edit-form").dataset.key = key;
     $("#edit-error").hidden = true;
     $("#edit-dialog").showModal();
@@ -713,7 +692,6 @@ $("#issue-btn").addEventListener("click", () => {
   $("#issue-error").hidden = true;
   $("#issue-form").reset();
   $("#issue-form").querySelector("[name=product]").value = "shop-os-foundation";
-  $("#issue-form").querySelector("[name=entitlements]").value = "foundation";
   $("#issue-dialog").showModal();
 });
 
@@ -728,9 +706,7 @@ $("#issue-form").addEventListener("submit", async (e) => {
     customer: fd.get("customer").trim(),
     email: fd.get("email").trim(),
     product: (fd.get("product") || "").trim() || "shop-os-foundation",
-    entitlements: (fd.get("entitlements") || "").split(",").map(s => s.trim()).filter(Boolean),
     lifetimeUpdates: fd.get("lifetimeUpdates") === "on",
-    cohort: (fd.get("cohort") || "").trim(),
   };
   const validUntil = (fd.get("valid_until") || "").trim();
   if (validUntil) body.valid_until = validUntil;
@@ -753,7 +729,6 @@ $("#edit-form").addEventListener("submit", async (e) => {
   const fd = new FormData(e.target);
   const body = {
     lifetimeUpdates: fd.get("lifetimeUpdates") === "on",
-    cohort: (fd.get("cohort") || "").trim(),
   };
   const r = await api("/update-license?key=" + encodeURIComponent(key), { method: "POST", body });
   if (!r.ok) {

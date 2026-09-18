@@ -10,13 +10,13 @@
  *   POST /revoke?key=...         -> soft revoke (sets cancelled_at; record preserved) (admin)
  *   POST /delete?key=...         -> hard delete (wipes KV record + cached PDF) (admin)
  *   POST /delete-bulk            -> hard delete an array of keys (admin, max 200/call)
- *   POST /update-license?key=... -> patch lifetimeUpdates / cohort flags (admin)
+ *   POST /update-license?key=... -> patch lifetimeUpdates flags (admin)
  *   GET  /list                   -> list all licenses (admin)
  *
  * Data lives in the LICENSES KV namespace, keyed by license-key string.
  * Each record:
  *   {
- *     key, customer, email, product, entitlements: string[],
+ *     key, customer, email, product,
  *     created_at, valid_until: string|null, cancelled_at: string|null,
  *     last_seen: string|null, activations: number
  *   }
@@ -62,6 +62,8 @@ export interface Env {
   // CONSULTATION has no legacy fallback; required for /products consultation buys.
   STRIPE_PRICE_ID_FOUNDATION?: string;
   STRIPE_PRICE_ID_CONSULTATION?: string;
+  STRIPE_PRICE_ID_LEAD_HANDLER?: string;
+  STRIPE_PRICE_ID_BUNDLE?: string;
 
   // Calendly booking URL sent in the consultation welcome email
   CALENDLY_CONSULTATION_URL?: string;
@@ -268,10 +270,8 @@ interface IssueRequest {
   customer: string;
   email: string;
   product?: string;
-  entitlements?: string[];
   valid_until?: string | null;
   lifetimeUpdates?: boolean;
-  cohort?: string;
 }
 
 // ----- CORS -----
@@ -408,7 +408,10 @@ async function handleValidate(req: Request, url: URL, env: Env, bumpLastSeen: bo
     valid: true,
     customer: record.customer,
     product: record.product,
-    entitlements: record.entitlements,
+    // Legacy compat: some deployed installs may read `entitlements` from the
+    // /validate response. Licenses no longer store it; emit the static
+    // default every Foundation license always had.
+    entitlements: ["foundation"],
     valid_until: record.valid_until,
     activated_at: record.last_seen,
   });
@@ -488,10 +491,8 @@ async function handleIssue(req: Request, env: Env): Promise<Response> {
     customer: body.customer,
     email: body.email,
     product: body.product,
-    entitlements: body.entitlements,
     valid_until: body.valid_until,
     lifetimeUpdates: body.lifetimeUpdates,
-    cohort: body.cohort,
   };
   const record = await issueLicense(env.LICENSES, input);
 
@@ -505,16 +506,15 @@ async function handleUpdateLicense(req: Request, url: URL, env: Env): Promise<Re
   const key = url.searchParams.get("key");
   if (!key) return json(req, { error: "missing key" }, 400);
 
-  let body: { lifetimeUpdates?: boolean; cohort?: string };
+  let body: { lifetimeUpdates?: boolean };
   try {
     body = await req.json();
   } catch {
     return json(req, { error: "invalid JSON body" }, 400);
   }
 
-  const patch: { lifetimeUpdates?: boolean; cohort?: string } = {};
+  const patch: { lifetimeUpdates?: boolean } = {};
   if (typeof body.lifetimeUpdates === "boolean") patch.lifetimeUpdates = body.lifetimeUpdates;
-  if (typeof body.cohort === "string") patch.cohort = body.cohort.trim();
   if (Object.keys(patch).length === 0) {
     return json(req, { error: "no updatable fields provided" }, 400);
   }
@@ -628,7 +628,9 @@ async function handleFounding50Count(req: Request, env: Env): Promise<Response> 
     for (const k of list.keys) {
       if (!k.name.startsWith("SHOP-")) continue;
       const r = await env.LICENSES.get<LicenseRecord>(k.name, "json");
-      if (r && r.cohort === "founding-50") paidCount++;
+      // Legacy field: cohort no longer exists on new records, but old
+      // founding-50 licenses in KV still carry it and should keep counting.
+      if (r && (r as LicenseRecord & { cohort?: string }).cohort === "founding-50") paidCount++;
     }
   } catch {
     // Fall through with paidCount=0 so the page always renders something.
@@ -839,7 +841,7 @@ export default {
         type Body = {
           email?: string;
           code?: string;
-          productType?: "foundation" | "consultation";
+          productType?: "foundation" | "consultation" | "lead-handler" | "bundle";
         };
         let body: Body;
         try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
@@ -847,8 +849,9 @@ export default {
         // productType defaults to "foundation" so the existing PurchaseSection on
         // /shop-ossi (which doesn't send the field) keeps working unchanged.
         const productType = body.productType ?? "foundation";
-        if (productType !== "foundation" && productType !== "consultation") {
-          return json(req, { error: "productType must be 'foundation' or 'consultation'." }, 400);
+        const KNOWN_TYPES = ["foundation", "consultation", "lead-handler", "bundle"] as const;
+        if (!KNOWN_TYPES.includes(productType)) {
+          return json(req, { error: "productType must be one of 'foundation', 'consultation', 'lead-handler', 'bundle'." }, 400);
         }
 
         // Email is required for Foundation (we pre-collect it before checkout to
@@ -860,13 +863,17 @@ export default {
 
         try {
           const stripe = getStripe(env);
-          const priceId = productType === "consultation"
-            ? env.STRIPE_PRICE_ID_CONSULTATION
-            : (env.STRIPE_PRICE_ID_FOUNDATION ?? env.STRIPE_PRICE_ID ?? env.STRIPE_PRICE_ID_TEST);
+          const priceByType: Record<string, { id?: string; envName: string }> = {
+            consultation: { id: env.STRIPE_PRICE_ID_CONSULTATION, envName: "STRIPE_PRICE_ID_CONSULTATION" },
+            "lead-handler": { id: env.STRIPE_PRICE_ID_LEAD_HANDLER, envName: "STRIPE_PRICE_ID_LEAD_HANDLER" },
+            bundle: { id: env.STRIPE_PRICE_ID_BUNDLE, envName: "STRIPE_PRICE_ID_BUNDLE" },
+            foundation: {
+              id: env.STRIPE_PRICE_ID_FOUNDATION ?? env.STRIPE_PRICE_ID ?? env.STRIPE_PRICE_ID_TEST,
+              envName: "STRIPE_PRICE_ID_FOUNDATION",
+            },
+          };
+          const { id: priceId, envName } = priceByType[productType];
           if (!priceId) {
-            const envName = productType === "consultation"
-              ? "STRIPE_PRICE_ID_CONSULTATION"
-              : "STRIPE_PRICE_ID_FOUNDATION";
             return json(req, { error: `${envName} not configured.` }, 500);
           }
 
@@ -886,13 +893,17 @@ export default {
 
           // Pick the right redirect surface per product so the customer lands
           // on the page that knows how to render their post-purchase state.
-          const successUrl = productType === "consultation"
-            ? `${redirectBase(req)}/products/thank-you?session_id={CHECKOUT_SESSION_ID}&product=consultation`
-            : `${redirectBase(req)}/shop-ossi/thank-you?session_id={CHECKOUT_SESSION_ID}`;
-          const cancelUrl = productType === "consultation"
-            ? `${redirectBase(req)}/products`
-            : `${redirectBase(req)}/shop-ossi#purchase`;
-          const source = productType === "consultation" ? "products" : "shop-ossi";
+          // Foundation keeps its dedicated thank-you page (license key UI).
+          // Everything else lands on /products/thank-you, which branches on
+          // the ?product= param. Bundle purchases include a license, but the
+          // welcome email carries the key, so the products page suffices.
+          const successUrl = productType === "foundation"
+            ? `${redirectBase(req)}/shop-ossi/thank-you?session_id={CHECKOUT_SESSION_ID}`
+            : `${redirectBase(req)}/products/thank-you?session_id={CHECKOUT_SESSION_ID}&product=${productType}`;
+          const cancelUrl = productType === "foundation"
+            ? `${redirectBase(req)}/shop-ossi#purchase`
+            : `${redirectBase(req)}/products`;
+          const source = productType === "foundation" ? "shop-ossi" : "products";
 
           const session = await stripe.createCheckoutSession({
             priceId,

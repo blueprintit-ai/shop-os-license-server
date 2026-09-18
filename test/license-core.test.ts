@@ -31,7 +31,6 @@ describe("buildLicenseRecord", () => {
   it("fills defaults", () => {
     const rec = buildLicenseRecord({ customer: "Acme", email: "a@b.co" });
     expect(rec.product).toBe("shop-os-foundation");
-    expect(rec.entitlements).toEqual(["foundation"]);
     expect(rec.cancelled_at).toBeNull();
     expect(rec.activations).toBe(0);
     expect(rec.last_seen).toBeNull();
@@ -63,22 +62,25 @@ describe("issueLicense collision handling", () => {
   });
 });
 
-describe("lifetime updates + cohort fields", () => {
-  it("defaults lifetimeUpdates=false and cohort='' when not provided", () => {
+describe("lifetime updates field", () => {
+  it("defaults lifetimeUpdates=false when not provided", () => {
     const rec = buildLicenseRecord({ customer: "Acme", email: "a@b.co" });
     expect(rec.lifetimeUpdates).toBe(false);
-    expect(rec.cohort).toBe("");
   });
 
-  it("respects explicit lifetimeUpdates and cohort inputs", () => {
+  it("respects explicit lifetimeUpdates input", () => {
     const rec = buildLicenseRecord({
       customer: "Acme",
       email: "a@b.co",
       lifetimeUpdates: true,
-      cohort: "founding-50",
     });
     expect(rec.lifetimeUpdates).toBe(true);
-    expect(rec.cohort).toBe("founding-50");
+  });
+
+  it("does not write legacy entitlements/cohort fields on new records", () => {
+    const rec = buildLicenseRecord({ customer: "Acme", email: "a@b.co" });
+    expect("entitlements" in rec).toBe(false);
+    expect("cohort" in rec).toBe(false);
   });
 });
 
@@ -99,17 +101,15 @@ describe("updateLicenseFlags", () => {
     expect(out).toBeNull();
   });
 
-  it("patches lifetimeUpdates and cohort independently", async () => {
+  it("patches lifetimeUpdates", async () => {
     const seed: LicenseRecord = buildLicenseRecord({ customer: "x", email: "x@y.z" });
     const kv = makeKv({ [seed.key]: JSON.stringify(seed) });
 
     const after1 = await updateLicenseFlags(kv, seed.key, { lifetimeUpdates: true });
     expect(after1?.lifetimeUpdates).toBe(true);
-    expect(after1?.cohort).toBe("");
 
-    const after2 = await updateLicenseFlags(kv, seed.key, { cohort: "partner" });
+    const after2 = await updateLicenseFlags(kv, seed.key, {});
     expect(after2?.lifetimeUpdates).toBe(true);
-    expect(after2?.cohort).toBe("partner");
   });
 
   it("backfills defaults on records that predate the new fields", async () => {
@@ -127,8 +127,9 @@ describe("updateLicenseFlags", () => {
     } as unknown as LicenseRecord;
     const kv = makeKv({ [legacy.key]: JSON.stringify(legacy) });
 
-    const after = await updateLicenseFlags(kv, legacy.key, { cohort: "beta" });
-    expect(after?.cohort).toBe("beta");
+    const after = await updateLicenseFlags(kv, legacy.key, {});
     expect(after?.lifetimeUpdates).toBe(false);
+    // Legacy stored fields are preserved untouched, not stripped.
+    expect((after as unknown as { entitlements?: string[] }).entitlements).toEqual(["foundation"]);
   });
 });

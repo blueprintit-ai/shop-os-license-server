@@ -5,11 +5,21 @@
 // which renders a branded page with two downloads:
 //   GET /install-script?key=...&os=windows  -> "Install Shop OS.bat"
 //   GET /install-script?key=...&os=mac      -> "Install Shop OS.command"
-// Each file carries the customer's license key in SHOPOS_LICENSE_KEY and
-// fetches the always-current setup script from GitHub raw (never from this
-// worker's bundled assets, which can go stale between deploys).
-
-const RAW_BASE = "https://raw.githubusercontent.com/blueprintit-ai/shop-os-installer/main/scripts";
+// Each file passes the customer's license key as a `--license` argument to
+// the downloaded setup script and fetches the always-current setup script
+// from GitHub raw (never from this worker's bundled assets, which can go
+// stale between deploys).
+//
+// Points at shop-os-dashboard, not shop-os-installer: the dashboard's
+// no-Git/no-admin/no-WinGet-or-Homebrew bootstrap (installer/setup-windows.ps1,
+// installer/setup-macos.sh) is now how Shop OS Foundation itself gets
+// installed, replacing shop-os-installer's old WinGet/Homebrew-based flow.
+// setup-windows.ps1/setup-macos.sh don't read SHOPOS_LICENSE_KEY (the old
+// shop-os-installer/scripts/setup-windows.ps1 did, translating it to a
+// --license flag internally) -- they forward whatever args they're given
+// straight through to bin/shop-os-dashboard-setup.js, which parses --license
+// itself, so the key travels as a real CLI argument end to end instead.
+const RAW_BASE = "https://raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/main/installer";
 
 export interface InstallLicenseInfo {
   key: string;
@@ -37,15 +47,10 @@ export function buildWindowsBat(info: InstallLicenseInfo): string {
     ':: "Windows protected your PC" screen. Click "More info" then',
     ':: "Run anyway". That prompt appears once.',
     "",
-    ":: Relaunch as administrator if we are not already.",
-    "net session >nul 2>&1",
-    "if %errorLevel% neq 0 (",
-    "  echo Shop OS setup needs administrator access. Click Yes on the next prompt.",
-    "  powershell -NoProfile -Command \"Start-Process -FilePath '%~f0' -Verb RunAs\"",
-    "  exit /b",
-    ")",
-    "",
-    `set "SHOPOS_LICENSE_KEY=${info.key}"`,
+    // No admin relaunch: shop-os-dashboard's installer needs no elevation
+    // at all (portable Node and the dashboard package both install
+    // per-user under %USERPROFILE%\.shopos) -- unlike the old
+    // shop-os-installer flow, which needed admin rights for WinGet.
     'set "SHOPOS_SETUP_PS1=%TEMP%\\shop-os-setup-%RANDOM%.ps1"',
     "",
     "echo Starting Shop OS setup. Keep this window open.",
@@ -63,7 +68,11 @@ export function buildWindowsBat(info: InstallLicenseInfo): string {
     "  exit /b 1",
     ")",
     "",
-    'powershell -NoProfile -ExecutionPolicy Bypass -File "%SHOPOS_SETUP_PS1%"',
+    // --license travels as a real CLI argument all the way through
+    // setup-windows.ps1 -> run-setup.ps1 -> bin/shop-os-dashboard-setup.js
+    // (each hop forwards @args unchanged) -- there is no SHOPOS_LICENSE_KEY
+    // env var for these scripts to read, unlike the old shop-os-installer flow.
+    `powershell -NoProfile -ExecutionPolicy Bypass -File "%SHOPOS_SETUP_PS1%" --license "${info.key}"`,
     'set "SHOPOS_EXIT=%errorLevel%"',
     'del "%SHOPOS_SETUP_PS1%" >nul 2>&1',
     "pause",
@@ -86,8 +95,13 @@ export function buildMacCommand(info: InstallLicenseInfo): string {
 #   3. Click "Open" again
 # You only have to do that once.
 
-export SHOPOS_LICENSE_KEY="${info.key}"
-/bin/bash -c "$(curl -fsSL ${RAW_BASE}/setup-macos.sh)"
+# --license travels as a real CLI argument all the way through
+# setup-macos.sh -> run-setup.sh -> bin/shop-os-dashboard-setup.js (each hop
+# forwards "$@" unchanged) -- there is no SHOPOS_LICENSE_KEY env var for
+# these scripts to read, unlike the old shop-os-installer flow. The "_"
+# after the downloaded script becomes its $0; everything after that is
+# "$@" inside it.
+/bin/bash -c "$(curl -fsSL ${RAW_BASE}/setup-macos.sh)" _ --license "${info.key}"
 echo ""
 echo "You can close this window."
 `;

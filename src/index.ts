@@ -64,11 +64,15 @@ export interface Env {
   STRIPE_PRICE_ID_CONSULTATION?: string;
   STRIPE_PRICE_ID_LEAD_HANDLER?: string;
   STRIPE_PRICE_ID_BUNDLE?: string;
+  STRIPE_PRICE_ID_AI_ASSISTANT?: string;
 
   // Calendly booking URL sent in the consultation welcome email
   CALENDLY_CONSULTATION_URL?: string;
   // Calendly booking URL for the Foundation setup + training sessions
   CALENDLY_SETUP_URL?: string;
+  // Calendly booking URLs for the per-product install calls (public; set in wrangler.toml [vars])
+  CALENDLY_LEAD_HANDLER_URL?: string;
+  CALENDLY_AI_ASSISTANT_URL?: string;
 
   // PayPal
   PAYPAL_CLIENT_ID_TEST?: string;
@@ -841,7 +845,7 @@ export default {
         type Body = {
           email?: string;
           code?: string;
-          productType?: "foundation" | "consultation" | "lead-handler" | "bundle";
+          productType?: "foundation" | "consultation" | "lead-handler" | "bundle" | "ai-assistant";
         };
         let body: Body;
         try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
@@ -849,9 +853,9 @@ export default {
         // productType defaults to "foundation" so the existing PurchaseSection on
         // /shop-ossi (which doesn't send the field) keeps working unchanged.
         const productType = body.productType ?? "foundation";
-        const KNOWN_TYPES = ["foundation", "consultation", "lead-handler", "bundle"] as const;
+        const KNOWN_TYPES = ["foundation", "consultation", "lead-handler", "bundle", "ai-assistant"] as const;
         if (!KNOWN_TYPES.includes(productType)) {
-          return json(req, { error: "productType must be one of 'foundation', 'consultation', 'lead-handler', 'bundle'." }, 400);
+          return json(req, { error: "productType must be one of 'foundation', 'consultation', 'lead-handler', 'bundle', 'ai-assistant'." }, 400);
         }
 
         // Email is required for Foundation (we pre-collect it before checkout to
@@ -867,6 +871,7 @@ export default {
             consultation: { id: env.STRIPE_PRICE_ID_CONSULTATION, envName: "STRIPE_PRICE_ID_CONSULTATION" },
             "lead-handler": { id: env.STRIPE_PRICE_ID_LEAD_HANDLER, envName: "STRIPE_PRICE_ID_LEAD_HANDLER" },
             bundle: { id: env.STRIPE_PRICE_ID_BUNDLE, envName: "STRIPE_PRICE_ID_BUNDLE" },
+            "ai-assistant": { id: env.STRIPE_PRICE_ID_AI_ASSISTANT, envName: "STRIPE_PRICE_ID_AI_ASSISTANT" },
             foundation: {
               id: env.STRIPE_PRICE_ID_FOUNDATION ?? env.STRIPE_PRICE_ID ?? env.STRIPE_PRICE_ID_TEST,
               envName: "STRIPE_PRICE_ID_FOUNDATION",

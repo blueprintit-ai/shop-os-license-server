@@ -4,13 +4,15 @@ import {
   sendWelcomeEmail,
   sendConsultationEmail,
   sendLeadHandlerEmail,
+  sendAiAssistantEmail,
   ResendSendInput,
   ResendConsultationSendInput,
   ResendLeadHandlerSendInput,
+  ResendAiAssistantSendInput,
   ResendResponse,
 } from "../email/resend";
 
-export type ProductType = "foundation" | "consultation" | "lead-handler" | "bundle";
+export type ProductType = "foundation" | "consultation" | "lead-handler" | "bundle" | "ai-assistant";
 
 export interface PaymentSuccessInput {
   paymentProvider: "stripe" | "paypal";
@@ -56,10 +58,16 @@ type SendLeadHandlerEmailFn = (
   input: ResendLeadHandlerSendInput,
 ) => Promise<ResendResponse>;
 
+type SendAiAssistantEmailFn = (
+  apiKey: string,
+  input: ResendAiAssistantSendInput,
+) => Promise<ResendResponse>;
+
 export interface PaymentSuccessOptions {
   sendEmail?: SendEmailFn;
   sendConsultation?: SendConsultationEmailFn;
   sendLeadHandler?: SendLeadHandlerEmailFn;
+  sendAiAssistant?: SendAiAssistantEmailFn;
 }
 
 export async function handlePaymentSuccess(
@@ -72,6 +80,8 @@ export async function handlePaymentSuccess(
     // the consultation link, which is also a one-hour event type, so a missed
     // env var degrades to a bookable time rather than a broken email.
     CALENDLY_SETUP_URL?: string;
+    CALENDLY_LEAD_HANDLER_URL?: string;
+    CALENDLY_AI_ASSISTANT_URL?: string;
   },
   input: PaymentSuccessInput,
   options: PaymentSuccessOptions = {}
@@ -89,6 +99,12 @@ export async function handlePaymentSuccess(
   // done-for-you install kickoff call. Mirrors the consultation flow.
   if (productType === "lead-handler") {
     return handleLeadHandlerSuccess(env, input, options);
+  }
+
+  // AI Assistant branch: no license issued — a booking-link email for the
+  // setup + training call. Mirrors the Lead Handler flow.
+  if (productType === "ai-assistant") {
+    return handleAiAssistantSuccess(env, input, options);
   }
 
   // From here down: "foundation" and "bundle". Bundle = Foundation license +
@@ -171,15 +187,28 @@ export async function handlePaymentSuccess(
   return { license, alreadyIssued, emailResult };
 }
 
-function leadHandlerBookingUrl(env: {
-  CALENDLY_CONSULTATION_URL?: string;
-  CALENDLY_SETUP_URL?: string;
-}): string {
-  return (
-    env.CALENDLY_SETUP_URL ??
-    env.CALENDLY_CONSULTATION_URL ??
-    "https://calendly.com/blueprintit/shop-os-foundation-setup"
-  );
+// Each install product has its own Calendly event. The Foundation setup link
+// (CALENDLY_SETUP_URL) is deliberately NOT a fallback: booking the wrong event
+// type is worse than the hardcoded default for the right one.
+const DEFAULT_LEAD_HANDLER_BOOKING_URL = "https://calendly.com/blueprintit/automated-lead-handler-setup";
+const DEFAULT_AI_ASSISTANT_BOOKING_URL = "https://calendly.com/blueprintit/ai-assistant-setup";
+
+function leadHandlerBookingUrl(env: { CALENDLY_LEAD_HANDLER_URL?: string }): string {
+  return env.CALENDLY_LEAD_HANDLER_URL || DEFAULT_LEAD_HANDLER_BOOKING_URL;
+}
+
+function aiAssistantBookingUrl(env: { CALENDLY_AI_ASSISTANT_URL?: string }): string {
+  return env.CALENDLY_AI_ASSISTANT_URL || DEFAULT_AI_ASSISTANT_BOOKING_URL;
+}
+
+// Pre-fill Calendly's invitee form so the booking is one click and lands under
+// the same email as the payment. Name only when the payment carried a real one.
+export function withBookingPrefill(url: string, input: { email?: string; customer?: string }): string {
+  let u: URL;
+  try { u = new URL(url); } catch { return url; }
+  if (input.email) u.searchParams.set("email", input.email);
+  if (input.customer && input.customer !== "Customer") u.searchParams.set("name", input.customer);
+  return u.toString();
 }
 
 async function sendLeadHandlerInstallEmail(
@@ -187,6 +216,8 @@ async function sendLeadHandlerInstallEmail(
     RESEND_API_KEY?: string;
     CALENDLY_CONSULTATION_URL?: string;
     CALENDLY_SETUP_URL?: string;
+    CALENDLY_LEAD_HANDLER_URL?: string;
+    CALENDLY_AI_ASSISTANT_URL?: string;
   },
   input: PaymentSuccessInput,
   options: PaymentSuccessOptions = {},
@@ -204,7 +235,7 @@ async function sendLeadHandlerInstallEmail(
   const result = await send(env.RESEND_API_KEY, {
     to: input.email,
     customerName,
-    bookingUrl: leadHandlerBookingUrl(env),
+    bookingUrl: withBookingPrefill(leadHandlerBookingUrl(env), input),
   });
   if (result.error) {
     return { ok: false, error: result.error.message };
@@ -221,6 +252,8 @@ async function handleLeadHandlerSuccess(
     RESEND_API_KEY?: string;
     CALENDLY_CONSULTATION_URL?: string;
     CALENDLY_SETUP_URL?: string;
+    CALENDLY_LEAD_HANDLER_URL?: string;
+    CALENDLY_AI_ASSISTANT_URL?: string;
   },
   input: PaymentSuccessInput,
   options: PaymentSuccessOptions = {},
@@ -242,6 +275,70 @@ async function handleLeadHandlerSuccess(
   return { license: null, alreadyIssued: false, emailResult };
 }
 
+async function sendAiAssistantSetupEmail(
+  env: {
+    RESEND_API_KEY?: string;
+    CALENDLY_CONSULTATION_URL?: string;
+    CALENDLY_SETUP_URL?: string;
+    CALENDLY_LEAD_HANDLER_URL?: string;
+    CALENDLY_AI_ASSISTANT_URL?: string;
+  },
+  input: PaymentSuccessInput,
+  options: PaymentSuccessOptions = {},
+): Promise<{ ok: boolean; error?: string }> {
+  const send = options.sendAiAssistant ?? sendAiAssistantEmail;
+  if (!env.RESEND_API_KEY) {
+    return { ok: false, error: "RESEND_API_KEY not configured." };
+  }
+  if (!input.email) {
+    return { ok: false, error: "No customer email on payment." };
+  }
+  const customerName = input.customer && input.customer !== "Customer"
+    ? input.customer
+    : input.email.split("@")[0];
+  const result = await send(env.RESEND_API_KEY, {
+    to: input.email,
+    customerName,
+    bookingUrl: withBookingPrefill(aiAssistantBookingUrl(env), input),
+  });
+  if (result.error) {
+    return { ok: false, error: result.error.message };
+  }
+  return { ok: true };
+}
+
+// Handle a standalone AI Assistant purchase: no license issuance, just the
+// setup-call kickoff email. Idempotent via the same KV key shape as the
+// other product types so /payment-status works unchanged.
+async function handleAiAssistantSuccess(
+  env: {
+    LICENSES: KVNamespace;
+    RESEND_API_KEY?: string;
+    CALENDLY_CONSULTATION_URL?: string;
+    CALENDLY_SETUP_URL?: string;
+    CALENDLY_LEAD_HANDLER_URL?: string;
+    CALENDLY_AI_ASSISTANT_URL?: string;
+  },
+  input: PaymentSuccessInput,
+  options: PaymentSuccessOptions = {},
+): Promise<PaymentSuccessResult> {
+  const idemKey = `payment:${input.paymentProvider}:${input.paymentId}`;
+  const sentinel = `ai-assistant-${input.email || input.paymentId}`;
+
+  const existing = await env.LICENSES.get(idemKey);
+  if (existing) {
+    // Already processed. Don't re-send the email; webhook retries are noise.
+    return { license: null, alreadyIssued: true, emailResult: { ok: true } };
+  }
+
+  // Write the idempotency record FIRST so a racing retry sees it. The email
+  // send below is best-effort: if Resend fails, Glenn can resend manually.
+  await env.LICENSES.put(idemKey, sentinel);
+
+  const emailResult = await sendAiAssistantSetupEmail(env, input, options);
+  return { license: null, alreadyIssued: false, emailResult };
+}
+
 // Build and send the full welcome email (per-customer PDF + first-week guide
 // attachments, booking link, personal install link) for an existing license.
 // Used by the payment-success flow above and by the admin manual-resend
@@ -253,6 +350,8 @@ export async function sendWelcomeEmailForLicense(
     ASSETS: Fetcher;
     CALENDLY_CONSULTATION_URL?: string;
     CALENDLY_SETUP_URL?: string;
+    CALENDLY_LEAD_HANDLER_URL?: string;
+    CALENDLY_AI_ASSISTANT_URL?: string;
   },
   license: LicenseRecord,
   options: PaymentSuccessOptions = {},

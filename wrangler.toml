@@ -25,6 +25,9 @@ crons = ["*/15 * * * *"]
 # Public env vars (safe to commit).
 SERVICE_NAME = "shop-os-license-server"
 SERVICE_VERSION = "1.0.0"
+# Per-product install-call booking links, sent in the post-purchase email.
+CALENDLY_LEAD_HANDLER_URL = "https://calendly.com/blueprintit/automated-lead-handler-setup"
+CALENDLY_AI_ASSISTANT_URL = "https://calendly.com/blueprintit/ai-assistant-setup"
 
 [assets]
 directory = "./src/assets"

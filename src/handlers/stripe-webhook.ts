@@ -86,7 +86,7 @@ export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): 
   // sessions in flight during deploy keep going through the original path.
   const rawType = full.metadata?.productType;
   const productType: ProductType =
-    rawType === "consultation" || rawType === "lead-handler" || rawType === "bundle"
+    rawType === "consultation" || rawType === "lead-handler" || rawType === "bundle" || rawType === "ai-assistant"
       ? rawType
       : "foundation";
 

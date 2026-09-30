@@ -11,6 +11,12 @@ import {
   leadHandlerHtml,
   leadHandlerText,
 } from "./lead-handler-template";
+import {
+  AiAssistantTemplateInput,
+  aiAssistantSubject,
+  aiAssistantHtml,
+  aiAssistantText,
+} from "./ai-assistant-template";
 
 export interface ResendAttachment {
   filename: string;
@@ -31,6 +37,12 @@ export interface ResendConsultationSendInput extends ConsultationTemplateInput {
 }
 
 export interface ResendLeadHandlerSendInput extends LeadHandlerTemplateInput {
+  to: string;
+  fromName?: string;
+  fromAddress?: string;
+}
+
+export interface ResendAiAssistantSendInput extends AiAssistantTemplateInput {
   to: string;
   fromName?: string;
   fromAddress?: string;
@@ -127,6 +139,39 @@ export async function sendLeadHandlerEmail(
     subject: leadHandlerSubject(),
     html: leadHandlerHtml(input),
     text: leadHandlerText(input),
+    reply_to: input.fromAddress ?? "glenn@blueprintit.ai",
+  };
+  const resp = await fetchImpl(RESEND_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await resp.text();
+  let data: ResendResponse;
+  try { data = JSON.parse(text); } catch { data = { error: { message: text } }; }
+  if (!resp.ok) {
+    return { error: { message: data.error?.message ?? `Resend ${resp.status}` } };
+  }
+  return data;
+}
+
+// Send the post-purchase email for an AI Assistant purchase. No license
+// key — a booking link for the setup + training call.
+export async function sendAiAssistantEmail(
+  apiKey: string,
+  input: ResendAiAssistantSendInput,
+  fetchImpl: typeof fetch = (input, init) => fetch(input, init),
+): Promise<ResendResponse> {
+  const from = `${input.fromName ?? "Glenn Chua"} <${input.fromAddress ?? "glenn@blueprintit.ai"}>`;
+  const body: Record<string, unknown> = {
+    from,
+    to: input.to,
+    subject: aiAssistantSubject(),
+    html: aiAssistantHtml(input),
+    text: aiAssistantText(input),
     reply_to: input.fromAddress ?? "glenn@blueprintit.ai",
   };
   const resp = await fetchImpl(RESEND_URL, {

@@ -7,13 +7,13 @@ export interface WelcomeTemplateInput {
 }
 
 export function welcomeSubject(): string {
-  return "Welcome to Shop OS, your license key and next steps";
+  return "Welcome to Blueprint OS, your license key and next steps";
 }
 
 export function welcomeText(input: WelcomeTemplateInput): string {
   return `Hi ${input.customerName},
 
-Your Shop OS Foundation license key is below, along with the onboarding
+Your Blueprint OS Foundation license key is below, along with the onboarding
 hour we run together and the short list of things to have ready before
 it.
 
@@ -31,18 +31,18 @@ embedded in the attached PDF.
 BOOK YOUR ONBOARDING HOUR
 ${"─".repeat(60)}
 
-Shop OS is set up with you, not by you. One booking, one hour, two
+Blueprint OS is set up with you, not by you. One booking, one hour, two
 halves:
 
-  First 30 minutes, setup. We get on a screen share and set Shop OS up on
-  your machine: every prerequisite, your license, and your Shop OS Vault
+  First 30 minutes, setup. We get on a screen share and set Blueprint OS up on
+  your machine: every prerequisite, your license, and your Blueprint OS Vault
   in the folder you choose. By the halfway mark you have a working Shop
   Brain.
 
   Second 30 minutes, training. We walk you and whoever else should be in
   the room through running it day to day.
 
-Pick your time here (look for "Shop OS Foundation Setup"):
+Pick your time here (look for "Blueprint OS Foundation Setup"):
 
     ${input.bookingUrl}
 
@@ -71,7 +71,7 @@ ${"─".repeat(60)}
 Five minutes of prep, so we spend the call on your business instead of
 on downloads:
 
-  1. A Claude subscription. Shop OS runs on Claude. If you do not have an
+  1. A Claude subscription. Blueprint OS runs on Claude. If you do not have an
      account yet, set one up at https://claude.ai/onboarding and have the
      login handy.
 
@@ -120,7 +120,7 @@ www.blueprintit.ai
 `;
 }
 
-// Visual brand language matches blueprintit.ai/shop-ossi:
+// Visual brand language matches blueprintit.ai/blueprint-os:
 // warm paper background, cyan + rust accents, "Blueprint" + italic rust "IT"
 // wordmark, cyan section rules, monospace section markers.
 // All CSS is inline (no <style>) for max email-client compatibility
@@ -138,7 +138,7 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
   const safeInstall = escapeAttr(input.installUrl);
   const installLabel = escapeHtml(input.installUrl);
 
-  // Palette (matches blueprintit.ai/shop-ossi):
+  // Palette (matches blueprintit.ai/blueprint-os):
   //   paper #f4efe3, paper-2 #ede6d4, paper-line #d9ceb0
   //   ink #0c1e2f, ink-soft #2a3f55, ink-mute #6a7788
   //   cyan #1c6ea4, rust #c2461f
@@ -151,7 +151,7 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Welcome to Shop OS</title>
+<title>Welcome to Blueprint OS</title>
 </head>
 <body style="margin:0;padding:0;background:#f4efe3;color:#0c1e2f;font-family:Georgia,'Iowan Old Style',serif;-webkit-font-smoothing:antialiased;">
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#f4efe3;">
@@ -174,14 +174,14 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 
 <!-- Title + tagline -->
 <tr><td style="padding:24px 0 4px;">
-<h1 style="font-family:Georgia,serif;font-size:28px;font-weight:600;margin:0;color:#0c1e2f;letter-spacing:-0.01em;line-height:1.1;">Welcome to Shop OS</h1>
+<h1 style="font-family:Georgia,serif;font-size:28px;font-weight:600;margin:0;color:#0c1e2f;letter-spacing:-0.01em;line-height:1.1;">Welcome to Blueprint OS</h1>
 <div style="font-family:Menlo,'SF Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:2.4px;color:#1c6ea4;margin-top:8px;">Your license, your onboarding hour, and how to prepare</div>
 </td></tr>
 
 <!-- Greeting -->
 <tr><td style="padding:22px 0 0;">
 <p style="${p}margin:0 0 12px;">Hi ${safeName},</p>
-<p style="${p}margin:0 0 4px;">Your <em style="font-style:italic;color:#1c6ea4;">Shop OS Foundation</em> license key is below, along with the onboarding hour we run together and the short list of things to have ready before it.</p>
+<p style="${p}margin:0 0 4px;">Your <em style="font-style:italic;color:#1c6ea4;">Blueprint OS Foundation</em> license key is below, along with the onboarding hour we run together and the short list of things to have ready before it.</p>
 </td></tr>
 
 <!-- § 01 License key -->
@@ -195,11 +195,11 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <!-- § 02 Book the sessions -->
 <tr><td style="padding:28px 0 0;">
 <div style="${marker}">§ 02 &nbsp;·&nbsp; Book your onboarding hour</div>
-<p style="${p}margin:8px 0 12px;">Shop OS is set up <em style="font-style:italic;">with</em> you, not by you. One booking, one hour, two halves:</p>
-<p style="${p}margin:0 0 10px;"><strong>First 30 minutes, setup.</strong> We get on a screen share and set Shop OS up on your machine: every prerequisite, your license, and your Shop OS Vault in the folder you choose. By the halfway mark you have a working Shop Brain.</p>
+<p style="${p}margin:8px 0 12px;">Blueprint OS is set up <em style="font-style:italic;">with</em> you, not by you. One booking, one hour, two halves:</p>
+<p style="${p}margin:0 0 10px;"><strong>First 30 minutes, setup.</strong> We get on a screen share and set Blueprint OS up on your machine: every prerequisite, your license, and your Blueprint OS Vault in the folder you choose. By the halfway mark you have a working Shop Brain.</p>
 <p style="${p}margin:0 0 14px;"><strong>Second 30 minutes, training.</strong> We walk you and whoever else should be in the room through running it day to day.</p>
 <p style="${p}margin:0 0 8px;"><a href="${safeBooking}" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;font-weight:600;">Pick your time here</a> &nbsp;&mdash;&nbsp; <span style="font-family:Menlo,'SF Mono',monospace;font-size:11px;word-break:break-all;">${bookingLabel}</span></p>
-<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Look for &ldquo;Shop OS Foundation Setup&rdquo;. One booking covers both halves. Pick an hour when you will not be pulled onto the floor.</p>
+<p style="font-family:Georgia,serif;font-size:13px;line-height:1.55;color:#2a3f55;margin:10px 0 0;font-style:italic;">Look for &ldquo;Blueprint OS Foundation Setup&rdquo;. One booking covers both halves. Pick an hour when you will not be pulled onto the floor.</p>
 </td></tr>
 
 <!-- § 03 Self install (optional) -->
@@ -215,7 +215,7 @@ export function welcomeHtml(input: WelcomeTemplateInput): string {
 <div style="${marker}">§ 04 &nbsp;·&nbsp; Before the call</div>
 <p style="${p}margin:8px 0 8px;">Five minutes of prep, so we spend the call on your business instead of on downloads:</p>
 <ol style="${p}margin:8px 0 12px 24px;padding:0;">
-<li style="margin:0 0 8px;"><strong>A Claude subscription.</strong> Shop OS runs on Claude. If you do not have an account yet, set one up at <a href="https://claude.ai/onboarding" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">claude.ai/onboarding</a> and have the login handy.</li>
+<li style="margin:0 0 8px;"><strong>A Claude subscription.</strong> Blueprint OS runs on Claude. If you do not have an account yet, set one up at <a href="https://claude.ai/onboarding" style="color:#1c6ea4;text-decoration:underline;text-underline-offset:2px;">claude.ai/onboarding</a> and have the login handy.</li>
 <li style="margin:0 0 8px;"><strong>Your computer login password.</strong> The install asks for it partway through. If someone else administers the machine, get them on the call with us.</li>
 <li style="margin:0 0 8px;"><strong>A decision on where the vault should live.</strong> Your home folder, Documents, or Desktop if you work on one computer. Inside Dropbox, iCloud Drive, or OneDrive if you want it synced across machines.</li>
 <li style="margin:0 0 8px;"><strong>Thirty uninterrupted minutes</strong> on the computer you actually work on, with the license key from § 01 within reach.</li>
@@ -255,7 +255,7 @@ Blueprint<em style="font-style:italic;color:#c2461f;font-weight:600;">IT</em>, L
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
 <tr><td style="border-top:1px solid #1c6ea4;height:0;line-height:0;font-size:0;">&nbsp;</td></tr>
 <tr><td style="padding:14px 0 0;font-family:Menlo,'SF Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:2.2px;color:#6a7788;">
-Blueprint IT &nbsp;·&nbsp; Shop OS Foundation &nbsp;·&nbsp; <a href="https://blueprintit.ai" style="color:#6a7788;text-decoration:none;">blueprintit.ai</a>
+Blueprint IT &nbsp;·&nbsp; Blueprint OS Foundation &nbsp;·&nbsp; <a href="https://blueprintit.ai" style="color:#6a7788;text-decoration:none;">blueprintit.ai</a>
 </td></tr>
 </table>
 </td></tr>

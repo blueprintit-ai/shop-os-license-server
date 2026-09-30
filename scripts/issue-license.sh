@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Issue a new Shop OS license key by calling the deployed Worker.
+# Issue a new Blueprint OS license key by calling the deployed Worker.
 #
 # Usage:
 #   ./scripts/issue-license.sh "Customer Name" "customer@email.com"

@@ -1,5 +1,5 @@
-﻿# Shop OS Foundation — Windows Setup Script
-# One command to install all prerequisites and Shop OS
+﻿# Blueprint OS Foundation — Windows Setup Script
+# One command to install all prerequisites and Blueprint OS
 
 $ErrorActionPreference = "Stop"
 
@@ -218,7 +218,7 @@ function Send-InstallLog {
 # every throw, logs it, and pauses so the window stays open.
 function Invoke-ShopOSInstall {
 
-  Write-Host "🚀 Shop OS Foundation — Windows Setup" -ForegroundColor Cyan
+  Write-Host "🚀 Blueprint OS Foundation — Windows Setup" -ForegroundColor Cyan
   Write-Host "=========================================" -ForegroundColor Cyan
   Write-Host ""
   Write-Host "This script will install:"
@@ -227,7 +227,7 @@ function Invoke-ShopOSInstall {
   Write-Host "  • Python 3"
   Write-Host "  • Claude Code"
   Write-Host "  • Obsidian"
-  Write-Host "  • Shop OS Vault + Installer"
+  Write-Host "  • Blueprint OS Vault + Installer"
   Write-Host ""
   Write-Host "You will be prompted for your license key after prerequisites are installed."
   Write-Host ""
@@ -349,7 +349,7 @@ function Invoke-ShopOSInstall {
     }
 
     if (-not (Test-Python3Present)) {
-      throw "Python 3 installation failed (last winget exit code $lastPyCode).`n`n  Install Python 3 manually from https://www.python.org/downloads/`n  IMPORTANT: tick 'Add python.exe to PATH' on the first screen of that`n  installer, then close this window, open a NEW PowerShell as administrator`n  and run the Shop OS installer command again."
+      throw "Python 3 installation failed (last winget exit code $lastPyCode).`n`n  Install Python 3 manually from https://www.python.org/downloads/`n  IMPORTANT: tick 'Add python.exe to PATH' on the first screen of that`n  installer, then close this window, open a NEW PowerShell as administrator`n  and run the Blueprint OS installer command again."
     }
     Write-Host "✓ Python 3 installed ($($global:ShopOS_PythonVersion))" -ForegroundColor Green
   }
@@ -433,14 +433,14 @@ function Invoke-ShopOSInstall {
   Write-Host "✨ Prerequisites complete!" -ForegroundColor Green
   Write-Host ""
 
-  # A personalized self-installer (Install Shop OS.bat from the welcome email)
+  # A personalized self-installer (Install Blueprint OS.bat from the welcome email)
   # bakes the customer's key into SHOPOS_LICENSE_KEY so nothing has to be
   # typed. Interactive prompt stays as the fallback.
   if (-not [string]::IsNullOrWhiteSpace($env:SHOPOS_LICENSE_KEY)) {
     $enteredKey = $env:SHOPOS_LICENSE_KEY
     Write-Host "✓ License key loaded from your personalized installer" -ForegroundColor Green
   } else {
-    $enteredKey = Read-Host "Enter your Shop OS license key"
+    $enteredKey = Read-Host "Enter your Blueprint OS license key"
   }
   if ([string]::IsNullOrWhiteSpace($enteredKey)) {
     throw "No license key provided."
@@ -449,13 +449,13 @@ function Invoke-ShopOSInstall {
 
   $global:ShopOS_CurrentStep = "vault_setup"
   Write-Host ""
-  Write-Host "A folder picker will open. Navigate to where you want Shop OS installed."
+  Write-Host "A folder picker will open. Navigate to where you want Blueprint OS installed."
   Write-Host "(Examples: your home folder, Dropbox, Documents)"
   Write-Host ""
 
   Add-Type -AssemblyName System.Windows.Forms
   $picker = New-Object System.Windows.Forms.FolderBrowserDialog
-  $picker.Description = "Choose where to install Shop OS"
+  $picker.Description = "Choose where to install Blueprint OS"
   $picker.RootFolder = "MyComputer"
   $picker.ShowNewFolderButton = $true
   $result = $picker.ShowDialog()
@@ -465,12 +465,12 @@ function Invoke-ShopOSInstall {
   }
 
   $parentDir = $picker.SelectedPath
-  $vaultName = Read-Host "Name your vault folder [Shop OS Vault]"
-  if ([string]::IsNullOrWhiteSpace($vaultName)) { $vaultName = "Shop OS Vault" }
+  $vaultName = Read-Host "Name your vault folder [Blueprint OS Vault]"
+  if ([string]::IsNullOrWhiteSpace($vaultName)) { $vaultName = "Blueprint OS Vault" }
   $vaultPath = Join-Path $parentDir $vaultName
 
   Write-Host ""
-  Write-Host "Installing Shop OS to: $vaultPath" -ForegroundColor Cyan
+  Write-Host "Installing Blueprint OS to: $vaultPath" -ForegroundColor Cyan
   Write-Host ""
 
   # Refresh PATH so freshly-installed tools (node, git) are findable. WinGet
@@ -488,7 +488,7 @@ function Invoke-ShopOSInstall {
     throw "npx not found after Node.js installation.`n`n  Node.js was installed but this terminal cannot see it yet.`n`n  Please close this window, open a new PowerShell, and run the`n  installer command again. Node.js will already be installed."
   }
 
-  # 6. Run Shop OS installer with license key and vault path.
+  # 6. Run Blueprint OS installer with license key and vault path.
   # Prefer the npm registry copy; fall back to installing straight from the
   # GitHub repo when the registry copy is unavailable (registry outage or a
   # package hold), so the install never depends on npm being reachable.
@@ -507,7 +507,7 @@ function Invoke-ShopOSInstall {
   # fell through to a misleading "vault folder not found / check Dropbox" error,
   # or, when the folder already existed, to a false "Setup complete".
   if ($npxCode -ne 0) {
-    throw "Shop OS installer did not complete (exit code $npxCode).`n`n  See the message above for the reason, fix it, then run this setup again.`n  Nothing was finalized, so re-running is safe."
+    throw "Blueprint OS installer did not complete (exit code $npxCode).`n`n  See the message above for the reason, fix it, then run this setup again.`n  Nothing was finalized, so re-running is safe."
   }
 
   # Poll for the vault folder to exist. PowerShell's & operator on npx.cmd can
@@ -566,7 +566,7 @@ function Invoke-ShopOSInstall {
     claude
   } else {
     Write-Host ""
-    Write-Host "Shop OS is fully installed. ✓" -ForegroundColor Green
+    Write-Host "Blueprint OS is fully installed. ✓" -ForegroundColor Green
     Write-Host ""
     Write-Host "To start Claude Code:" -ForegroundColor Cyan
     Write-Host "  1. Close this window and open a NEW PowerShell"

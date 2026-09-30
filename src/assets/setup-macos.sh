@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Shop OS Foundation — macOS Setup Script
-# One command to install all prerequisites and Shop OS
+# Blueprint OS Foundation — macOS Setup Script
+# One command to install all prerequisites and Blueprint OS
 
 # ---- install telemetry (best-effort, mirrors setup-windows.ps1) ----
 # Reports where a run stopped to the license server's install-log so failed
@@ -26,7 +26,7 @@ on_exit() {
 }
 trap on_exit EXIT
 
-echo "🚀 Shop OS Foundation — macOS Setup"
+echo "🚀 Blueprint OS Foundation — macOS Setup"
 echo "=========================================="
 echo ""
 echo "This script will install:"
@@ -36,7 +36,7 @@ echo "  • Git"
 echo "  • Python 3"
 echo "  • Claude Code"
 echo "  • Obsidian"
-echo "  • Shop OS Vault + Installer"
+echo "  • Blueprint OS Vault + Installer"
 echo ""
 echo "You'll be prompted for your license key after prerequisites are installed."
 echo ""
@@ -97,7 +97,7 @@ fi
 
 CURRENT_STEP="git_install"
 # 2b. Check/install Git
-# The Shop OS npx installer uses git to refresh the plugin marketplace clone
+# The Blueprint OS npx installer uses git to refresh the plugin marketplace clone
 # (~/.claude/plugins/marketplaces/blueprint-skills). On most Macs git arrives
 # with the Command Line Tools that Homebrew triggers, but we install it
 # explicitly here so a fresh customer never lands in a "no git, silent fail"
@@ -162,7 +162,7 @@ if [ -x "$HOME/.local/bin/claude" ]; then
     */bash) PROFILE_FILE="$HOME/.bash_profile" ;;
   esac
   if ! grep -qs '\.local/bin' "$PROFILE_FILE"; then
-    printf '\n# Added by Shop OS setup: Claude Code lives in ~/.local/bin\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$PROFILE_FILE"
+    printf '\n# Added by Blueprint OS setup: Claude Code lives in ~/.local/bin\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$PROFILE_FILE"
     echo "✓ Added ~/.local/bin to PATH in ${PROFILE_FILE/#$HOME/~} (so 'claude' works in new Terminal windows)"
   fi
 fi
@@ -188,14 +188,14 @@ echo "=========================================="
 echo "✨ Prerequisites complete!"
 echo ""
 
-# A personalized self-installer (Install Shop OS.command from the welcome
+# A personalized self-installer (Install Blueprint OS.command from the welcome
 # email) bakes the customer's key into SHOPOS_LICENSE_KEY so nothing has to
 # be typed. Interactive prompt stays as the fallback.
 if [ -n "${SHOPOS_LICENSE_KEY:-}" ]; then
   LICENSE_KEY="$SHOPOS_LICENSE_KEY"
   echo "✓ License key loaded from your personalized installer"
 else
-  read -p "Enter your Shop OS license key: " LICENSE_KEY < /dev/tty
+  read -p "Enter your Blueprint OS license key: " LICENSE_KEY < /dev/tty
 fi
 
 if [ -z "$LICENSE_KEY" ]; then
@@ -205,28 +205,28 @@ fi
 LOG_LICENSE_KEY="$LICENSE_KEY"
 
 echo ""
-echo "A folder picker will open. Navigate to where you want Shop OS installed."
+echo "A folder picker will open. Navigate to where you want Blueprint OS installed."
 echo "(Examples: home folder, Dropbox, Documents)"
 echo ""
 
-PARENT_DIR=$(osascript -e 'POSIX path of (choose folder with prompt "Choose where to install Shop OS:")')
+PARENT_DIR=$(osascript -e 'POSIX path of (choose folder with prompt "Choose where to install Blueprint OS:")')
 
 if [ -z "$PARENT_DIR" ]; then
   echo "✗ No folder selected. Exiting."
   exit 1
 fi
 
-read -p "Name your vault folder [Shop OS Vault]: " VAULT_NAME < /dev/tty
-VAULT_NAME="${VAULT_NAME:-Shop OS Vault}"
+read -p "Name your vault folder [Blueprint OS Vault]: " VAULT_NAME < /dev/tty
+VAULT_NAME="${VAULT_NAME:-Blueprint OS Vault}"
 
 VAULT_PATH="${PARENT_DIR%/}/$VAULT_NAME"
 
 echo ""
-echo "Installing Shop OS to: $VAULT_PATH"
+echo "Installing Blueprint OS to: $VAULT_PATH"
 echo ""
 
 CURRENT_STEP="npx_installer"
-# 6. Run Shop OS installer with license key and vault path
+# 6. Run Blueprint OS installer with license key and vault path
 # Redirect stdin to /dev/tty so npx doesn't drain the curl|bash pipe.
 # Prefer the npm registry copy; fall back to installing straight from the
 # GitHub repo when the registry copy is unavailable (e.g. registry outage or

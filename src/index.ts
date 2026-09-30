@@ -1,5 +1,5 @@
 /**
- * Shop OS License Server (Cloudflare Worker)
+ * Blueprint OS License Server (Cloudflare Worker)
  *
  * Endpoints:
  *   GET  /                       -> health check
@@ -58,7 +58,7 @@ export interface Env {
 
   // Per-product Stripe price IDs (live values via `wrangler secret put`).
   // FOUNDATION falls back to the legacy STRIPE_PRICE_ID / *_TEST for backward
-  // compat with the existing /shop-ossi flow if the new secret isn't set.
+  // compat with the existing /blueprint-os flow if the new secret isn't set.
   // CONSULTATION has no legacy fallback; required for /products consultation buys.
   STRIPE_PRICE_ID_FOUNDATION?: string;
   STRIPE_PRICE_ID_CONSULTATION?: string;
@@ -218,7 +218,7 @@ async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts:
     if (await env.LICENSES.get(marker)) continue;
     const log = lastError.log!;
     const text = [
-      `A Shop OS install for ${lic} failed and has not succeeded since.`,
+      `A Blueprint OS install for ${lic} failed and has not succeeded since.`,
       ``,
       `Step:  ${log.step ?? "unknown"}`,
       `Error: ${log.error_message ?? "(none recorded)"}`,
@@ -236,7 +236,7 @@ async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts:
         body: JSON.stringify({
           from: "Blueprint.ai <glenn@blueprintit.ai>",
           to: "glenn@blueprintit.ai",
-          subject: `Shop OS install failed: ${lic} (${log.step ?? "unknown step"})`,
+          subject: `Blueprint OS install failed: ${lic} (${log.step ?? "unknown step"})`,
           text,
         }),
       });
@@ -455,12 +455,12 @@ async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Re
   if (os === "mac") {
     // Zip so the .command keeps its execute bit — a bare download has none
     // and macOS refuses to run it ("appropriate access privileges").
-    const zip = buildZipWithExecutable("Install Shop OS.command", buildMacCommand(info));
+    const zip = buildZipWithExecutable("Install Blueprint OS.command", buildMacCommand(info));
     return new Response(zip, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": 'attachment; filename="Install Shop OS.zip"',
+        "Content-Disposition": 'attachment; filename="Install Blueprint OS.zip"',
         "Cache-Control": "no-store",
         ...corsResponseHeaders(req),
       },
@@ -470,7 +470,7 @@ async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Re
     status: 200,
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="Install Shop OS.bat"',
+      "Content-Disposition": 'attachment; filename="Install Blueprint OS.bat"',
       "Cache-Control": "no-store",
       ...corsResponseHeaders(req),
     },
@@ -851,7 +851,7 @@ export default {
         try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
 
         // productType defaults to "foundation" so the existing PurchaseSection on
-        // /shop-ossi (which doesn't send the field) keeps working unchanged.
+        // /blueprint-os (which doesn't send the field) keeps working unchanged.
         const productType = body.productType ?? "foundation";
         const KNOWN_TYPES = ["foundation", "consultation", "lead-handler", "bundle", "ai-assistant"] as const;
         if (!KNOWN_TYPES.includes(productType)) {
@@ -903,10 +903,10 @@ export default {
           // the ?product= param. Bundle purchases include a license, but the
           // welcome email carries the key, so the products page suffices.
           const successUrl = productType === "foundation"
-            ? `${redirectBase(req)}/shop-ossi/thank-you?session_id={CHECKOUT_SESSION_ID}`
+            ? `${redirectBase(req)}/blueprint-os/thank-you?session_id={CHECKOUT_SESSION_ID}`
             : `${redirectBase(req)}/products/thank-you?session_id={CHECKOUT_SESSION_ID}&product=${productType}`;
           const cancelUrl = productType === "foundation"
-            ? `${redirectBase(req)}/shop-ossi#purchase`
+            ? `${redirectBase(req)}/blueprint-os#purchase`
             : `${redirectBase(req)}/products`;
           const source = productType === "foundation" ? "shop-ossi" : "products";
 

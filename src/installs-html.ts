@@ -8,7 +8,7 @@ export const INSTALLS_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Shop OS — Install Logs</title>
+<title>Blueprint OS — Install Logs</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {

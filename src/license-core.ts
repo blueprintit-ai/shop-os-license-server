@@ -36,7 +36,7 @@ export interface LicenseRecord {
     affiliate?: string;
     discountAmount?: number; // cents (integer)
     welcomeEmailSentAt?: string | null;
-    // "bundle" when the license came from the Shop OS + Lead Handler bundle;
+    // "bundle" when the license came from the Blueprint OS + Lead Handler bundle;
     // absent/"foundation" for a standalone Foundation purchase.
     productType?: string;
   };

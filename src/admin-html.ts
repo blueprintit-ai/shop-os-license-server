@@ -8,7 +8,7 @@ export const ADMIN_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Shop OS Licenses</title>
+<title>Blueprint OS Licenses</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -206,7 +206,7 @@ export const ADMIN_HTML = `<!DOCTYPE html>
 
 <div id="login-view" class="login" hidden>
   <h2>Sign in</h2>
-  <p>Paste your admin token to manage Shop OS licenses. The token is the same value you set via <code>wrangler secret put ADMIN_TOKEN</code>.</p>
+  <p>Paste your admin token to manage Blueprint OS licenses. The token is the same value you set via <code>wrangler secret put ADMIN_TOKEN</code>.</p>
   <form id="login-form">
     <input type="password" name="token" placeholder="Bearer token" required autofocus>
     <button type="submit" class="primary">Sign in</button>
@@ -216,7 +216,7 @@ export const ADMIN_HTML = `<!DOCTYPE html>
 
 <div id="app" hidden>
   <header>
-    <h1>Shop OS Licenses</h1>
+    <h1>Blueprint OS Licenses</h1>
     <div class="actions">
       <a href="/admin/installs" class="nav-link">Install Logs &#8599;</a>
       <button id="refresh-btn" class="ghost" title="Reload from server">↻ Refresh</button>
@@ -755,19 +755,19 @@ const BOOKING_URL = "https://calendly.com/blueprintit/shop-os-foundation-setup";
 
 function buildEmailTemplate(lic) {
   return [
-    \`Subject: Welcome to Shop OS, your license key and next steps\`,
+    \`Subject: Welcome to Blueprint OS, your license key and next steps\`,
     \`\`,
     \`Hi \${lic.customer},\`,
     \`\`,
-    \`Welcome to Shop OS. Your license key is:\`,
+    \`Welcome to Blueprint OS. Your license key is:\`,
     \`\`,
     \`    \${lic.key}\`,
     \`\`,
-    \`Shop OS is set up with you, not by you. One booking, one hour: the\`,
+    \`Blueprint OS is set up with you, not by you. One booking, one hour: the\`,
     \`first half we install it on your machine, the second half we train\`,
     \`you and your team.\`,
     \`\`,
-    \`Book it here (listed as "Shop OS Foundation Setup"): \${BOOKING_URL}\`,
+    \`Book it here (listed as "Blueprint OS Foundation Setup"): \${BOOKING_URL}\`,
     \`\`,
     \`Before the call:\`,
     \`\`,

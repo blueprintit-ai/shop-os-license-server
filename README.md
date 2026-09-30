@@ -5,14 +5,14 @@ project: shop-os
 tags: [license-server, cloudflare-worker, shop-os, infrastructure]
 ---
 
-# Shop OS License Server
+# Blueprint OS License Server
 
-A small Cloudflare Worker that issues, validates, and revokes Shop OS license keys. Backed by Cloudflare KV. Free tier handles 100,000 reads/day, way more than we will use for years.
+A small Cloudflare Worker that issues, validates, and revokes Blueprint OS license keys. Backed by Cloudflare KV. Free tier handles 100,000 reads/day, way more than we will use for years.
 
 ## What it does
 
 - **`GET /validate?key=...`**: used by the npx installer when a customer pastes their key. Returns customer info + entitlements if the key is valid.
-- **`GET /refresh?key=...`**: used by Shop OS skills periodically to confirm the license is still active. Bumps `last_seen` and returns the same shape as `/validate`.
+- **`GET /refresh?key=...`**: used by Blueprint OS skills periodically to confirm the license is still active. Bumps `last_seen` and returns the same shape as `/validate`.
 - **`POST /issue`**: admin endpoint. Generates a new key when a customer pays. Called from a Stripe webhook later, or manually via `scripts/issue-license.sh`.
 - **`POST /revoke?key=...`**: admin endpoint. Marks a key as cancelled. Subsequent `/validate` calls return 403.
 - **`GET /list`**: admin endpoint. Returns all licenses (paginated up to 1000).
@@ -167,7 +167,7 @@ Then:
 ./scripts/revoke-license.sh SHOP-XXXX-YYYY-ZZZZ
 ```
 
-Email the key to the customer in the Shop OS welcome email. The npx installer they run will validate it against this server.
+Email the key to the customer in the Blueprint OS welcome email. The npx installer they run will validate it against this server.
 
 ## License record schema
 
@@ -197,7 +197,7 @@ Each license is stored in KV as JSON, keyed by the license key string:
 
 Once you have Stripe set up, point the `checkout.session.completed` webhook at `POST /issue` (with the admin token in the header). Map the customer's email and metadata to the JSON body. The Worker will generate a key and you can email it via a separate flow.
 
-That is a small follow-up project. For the first 5–20 Shop OS customers, manual `./scripts/issue-license.sh` after each payment is fine.
+That is a small follow-up project. For the first 5–20 Blueprint OS customers, manual `./scripts/issue-license.sh` after each payment is fine.
 
 ## Local development
 
@@ -236,7 +236,7 @@ When ready, create a **private** repo at `github.com/blueprintit-ai/shop-os-lice
 cd "Projects/shop-os-license-server"
 git init
 git add .
-git commit -m "Initial license server for Shop OS Foundation"
+git commit -m "Initial license server for Blueprint OS Foundation"
 git remote add origin git@github.com:blueprintit-ai/shop-os-license-server.git
 git push -u origin main
 ```
@@ -250,6 +250,6 @@ Cloudflare Workers free tier:
 - 1,000 KV reads per day
 - Unlimited KV writes (within reason)
 
-For 200 Shop OS customers each validating once a week, that is roughly 30 reads per day. The free tier covers this 30x over. **Expected monthly cost: $0.**
+For 200 Blueprint OS customers each validating once a week, that is roughly 30 reads per day. The free tier covers this 30x over. **Expected monthly cost: $0.**
 
 <span style="background-color:#F4EFE3; color:#020309; padding:2px 8px; border-radius:3px; font-size:0.85em;">🤖 Blueprint IT Vault Operator, last edited: 2026-05-28T00:00:00Z</span>

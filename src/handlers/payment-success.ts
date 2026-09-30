@@ -440,7 +440,7 @@ export async function renderWelcomePdfBytes(env: any, licenseKey: string): Promi
     footerTemplate: `
       <div style="width:100%;height:100%;background-color:#f4efe3;-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box;margin:0;padding:0;">
         <div style="margin:0 0.75in;padding-top:14pt;border-top:0.5pt solid #1c6ea4;font-family:'SF Mono','Menlo','Consolas',monospace;font-size:7.5pt;color:#2a3f55;text-transform:uppercase;letter-spacing:0.1em;display:flex;justify-content:space-between;">
-          <span>Blueprint IT &middot; Shop OS Foundation</span>
+          <span>Blueprint IT &middot; Blueprint OS Foundation</span>
           <span>blueprintit.ai &middot; page <span class="pageNumber"></span></span>
         </div>
       </div>

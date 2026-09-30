@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Revoke a Shop OS license key.
+# Revoke a Blueprint OS license key.
 #
 # Usage:
 #   ./scripts/revoke-license.sh SHOP-XXXX-YYYY-ZZZZ

@@ -27,7 +27,7 @@ describe("sendWelcomeEmail", () => {
     // reads better than one guy for a $1,500 product.
     expect(body.from).toBe("Blueprint.ai <glenn@blueprintit.ai>");
     expect(body.to).toBe("marco@example.com");
-    expect(body.subject).toContain("Welcome to Shop OS");
+    expect(body.subject).toContain("Welcome to Blueprint OS");
     expect(body.html).toContain("SHOP-AAAA-BBBB-CCCC");
     expect(body.text).toContain("SHOP-AAAA-BBBB-CCCC");
     expect(body.reply_to).toBe("glenn@blueprintit.ai");

@@ -94,7 +94,7 @@ export class PayPalClient {
       purchase_units: [
         {
           amount: { currency_code: input.currency ?? "USD", value: usd },
-          description: "Shop OS Foundation, one-time license",
+          description: "Blueprint OS Foundation, one-time license",
           custom_id: JSON.stringify(input.metadata).slice(0, 127),
         },
       ],

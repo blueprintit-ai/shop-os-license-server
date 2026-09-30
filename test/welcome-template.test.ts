@@ -19,7 +19,7 @@ describe("welcomeText", () => {
   it("includes the booking link for the setup and training sessions", () => {
     expect(welcomeText(input)).toContain("https://calendly.com/blueprintit/shop-os-setup");
   });
-  // Calendly hosts ONE 1-hour event ("Shop OS Foundation Setup"), not two
+  // Calendly hosts ONE 1-hour event ("Blueprint OS Foundation Setup"), not two
   // 30-minute ones. Copy that tells customers to book two separate sessions
   // sends them looking for an event type that does not exist.
   it("describes one booking covering both halves of the hour", () => {
@@ -96,6 +96,6 @@ describe("welcomeHtml", () => {
 
 describe("welcomeSubject", () => {
   it("matches the documented subject line", () => {
-    expect(welcomeSubject()).toBe("Welcome to Shop OS, your license key and next steps");
+    expect(welcomeSubject()).toBe("Welcome to Blueprint OS, your license key and next steps");
   });
 });

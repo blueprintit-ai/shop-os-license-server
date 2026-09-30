@@ -2,7 +2,7 @@
   "name": "shop-os-license-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Cloudflare Worker that issues, validates, and revokes Shop OS license keys.",
+  "description": "Cloudflare Worker that issues, validates, and revokes Blueprint OS license keys.",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

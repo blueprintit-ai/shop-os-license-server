@@ -55,6 +55,29 @@ describe("buildMacCommand", () => {
     expect(cmd).not.toContain("--license");
   });
 
+  it("refuses to run an empty download and surfaces a non-zero setup exit instead of saying 'close this window'", () => {
+    const full = buildMacCommand(INFO);
+    // Judge the code, not the comments (a comment explains the old shape).
+    const cmd = full.split("\n").filter((l) => !l.trimStart().startsWith("#")).join("\n");
+    // Download-then-run, not bash -c "$(curl ...)": an empty body must stop.
+    expect(cmd).toMatch(/SETUP_SCRIPT="\$\(curl -fsSL [^)]+setup-macos\.sh\)"/);
+    expect(cmd).toContain('if [ -z "$SETUP_SCRIPT" ]');
+    expect(cmd).toContain('/bin/bash -c "$SETUP_SCRIPT"');
+    expect(cmd).not.toMatch(/bash -c "\$\(curl/);
+    // The setup script's exit status is checked before the all-clear line.
+    expect(cmd).toContain("rc=$?");
+    expect(cmd.indexOf('if [ "$rc" -ne 0 ]')).toBeLessThan(cmd.indexOf("You can close this window."));
+  });
+
+  it("neutralises control characters in the customer name so a comment line can't become code", () => {
+    const evil = { key: INFO.key, customer: "Acme\nrm -rf /\r\n" };
+    const cmd = buildMacCommand(evil);
+    const bat = buildWindowsBat(evil);
+    expect(cmd).not.toContain("\nrm -rf /");
+    expect(bat).not.toContain("\nrm -rf /");
+    expect(cmd).toContain("Licensed to: Acme rm -rf /");
+  });
+
   // Regression test: an earlier draft of this generator used `//`
   // (JS-style) comments inside this function's bash template literal
   // instead of `#` (bash-style), which would have shipped a broken

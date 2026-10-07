@@ -23,6 +23,13 @@ export interface InstallLicenseInfo {
   customer: string;
 }
 
+// The customer name is interpolated into a comment line of a .bat and a
+// .command. A newline in it would end the comment and run the rest as code,
+// so collapse control characters to spaces before it goes in.
+function commentSafe(s: string): string {
+  return s.replace(/[\x00-\x1f\x7f]+/g, " ").trim();
+}
+
 export function buildWindowsBat(info: InstallLicenseInfo): string {
   // CRLF line endings: cmd.exe misparses bare-LF batch files in some paths.
   //
@@ -38,7 +45,7 @@ export function buildWindowsBat(info: InstallLicenseInfo): string {
     "@echo off",
     ":: ==============================================",
     "::  Blueprint OS Foundation - Self Installer (Windows)",
-    `::  Licensed to: ${info.customer}`,
+    `::  Licensed to: ${commentSafe(info.customer)}`,
     ":: ==============================================",
     ":: The first time you open this file, Windows may show a blue",
     ':: "Windows protected your PC" screen. Click "More info" then',
@@ -84,7 +91,7 @@ export function buildMacCommand(info: InstallLicenseInfo): string {
   return `#!/bin/bash
 # ==============================================
 #  Blueprint OS Foundation - Self Installer (Mac)
-#  Licensed to: ${info.customer}
+#  Licensed to: ${commentSafe(info.customer)}
 # ==============================================
 # The first time you open this file, macOS may say it "cannot be opened
 # because it is from an unidentified developer". That is normal:
@@ -94,8 +101,26 @@ export function buildMacCommand(info: InstallLicenseInfo): string {
 # You only have to do that once.
 
 export SHOPOS_LICENSE_KEY="${info.key}"
-/bin/bash -c "$(curl -fsSL ${RAW_BASE}/setup-macos.sh)"
+
+# Download first, then run. A bare \`bash -c "$(curl ...)"\` turns a failed
+# download (offline, captive portal, GitHub down) into \`bash -c ""\`, which
+# exits 0 and lands on "You can close this window" with nothing installed.
+SETUP_SCRIPT="$(curl -fsSL ${RAW_BASE}/setup-macos.sh)"
+if [ -z "$SETUP_SCRIPT" ]; then
+  echo ""
+  echo "Could not download the Blueprint OS setup script. Check your internet connection and try again."
+  read -p "Press Return to close this window" < /dev/tty
+  exit 1
+fi
+/bin/bash -c "$SETUP_SCRIPT"
+rc=$?
 echo ""
+if [ "$rc" -ne 0 ]; then
+  echo "Setup did not finish (exit code $rc). Scroll up for the reason, fix it, and run this installer again."
+  echo "If it keeps failing, send a screenshot of this window to your Blueprint IT contact."
+  read -p "Press Return to close this window" < /dev/tty
+  exit "$rc"
+fi
 echo "You can close this window."
 `;
 }

@@ -188,7 +188,9 @@ function Get-WebErrorDetail {
 # even when the script runs inside [scriptblock]::Create(), which has no
 # formal $script: scope.
 $global:ShopOS_WorkerUrl   = "https://shop-os-license-server.glenn-15d.workers.dev"
-$global:ShopOS_LicenseKey  = "unknown"
+# Seeded from the personalized .bat's env var so failures in the prerequisite
+# steps (the likeliest ones) are logged against the customer, not "unknown".
+$global:ShopOS_LicenseKey  = if ([string]::IsNullOrWhiteSpace($env:SHOPOS_LICENSE_KEY)) { "unknown" } else { $env:SHOPOS_LICENSE_KEY }
 $global:ShopOS_CurrentStep = "start"
 $global:ShopOS_PythonVersion = ""
 
@@ -458,13 +460,22 @@ function Invoke-ShopOSInstall {
   $picker.Description = "Choose where to install Blueprint OS"
   $picker.RootFolder = "MyComputer"
   $picker.ShowNewFolderButton = $true
-  $result = $picker.ShowDialog()
+  # Give the dialog a topmost owner: from a console (an elevated one via UAC
+  # especially) an ownerless ShowDialog() can open behind other windows, and
+  # the customer sees a script that looks hung.
+  $owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true; ShowInTaskbar = $false }
+  $result = $picker.ShowDialog($owner)
+  $owner.Dispose()
 
   if ($result -ne [System.Windows.Forms.DialogResult]::OK) {
     throw "No folder selected."
   }
 
   $parentDir = $picker.SelectedPath
+  # Virtual locations (Network, Libraries) come back with an empty path.
+  if ([string]::IsNullOrWhiteSpace($parentDir)) {
+    throw "That location can't hold files. Choose a real folder, such as your home folder, Dropbox, or Documents."
+  }
   $vaultName = Read-Host "Name your vault folder [Blueprint OS Vault]"
   if ([string]::IsNullOrWhiteSpace($vaultName)) { $vaultName = "Blueprint OS Vault" }
   $vaultPath = Join-Path $parentDir $vaultName
@@ -493,8 +504,26 @@ function Invoke-ShopOSInstall {
   # GitHub repo when the registry copy is unavailable (registry outage or a
   # package hold), so the install never depends on npm being reachable.
   $global:ShopOS_CurrentStep = "npx_installer"
-  & npm view @blueprintitai/shop-os-install version *> $null
-  if ($LASTEXITCODE -eq 0) {
+  # Windows PowerShell 5.1: under $ErrorActionPreference = "Stop", a native
+  # command whose stderr is redirected (2>, 2>&1, *>) has each stderr line
+  # turned into a terminating NativeCommandError. `npm view` writes to stderr
+  # on a SUCCESSFUL run whenever npm's update notifier fires ("npm notice New
+  # major version of npm available!"), which it does on the first npm command
+  # after a fresh Node install, and the Node LTS bundled npm is routinely a
+  # major behind the registry. That would stop setup here with a confusing
+  # "npm notice ..." error. Probe with EAP=Continue; $LASTEXITCODE is the
+  # verdict (same pattern as Test-Python3Present above).
+  $prevEAP = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & npm view @blueprintitai/shop-os-install version *> $null
+    $npmViewCode = $LASTEXITCODE
+  } catch {
+    $npmViewCode = 1
+  } finally {
+    $ErrorActionPreference = $prevEAP
+  }
+  if ($npmViewCode -eq 0) {
     & npx -y @blueprintitai/shop-os-install@latest --license "$($global:ShopOS_LicenseKey)" --vault "$vaultPath" --yes
   } else {
     Write-Host "  npm registry copy unavailable - installing from GitHub instead" -ForegroundColor DarkGray
@@ -556,7 +585,8 @@ function Invoke-ShopOSInstall {
   if (Check-Command claude) {
     Write-Host ""
     Write-Host "Step 1 of 2: Sign in to Claude Code." -ForegroundColor Cyan
-    Write-Host "After signing in, close Claude Code — it will reopen automatically with all commands ready." -ForegroundColor Yellow
+    Write-Host "After signing in, type /exit — it will reopen automatically with all commands ready." -ForegroundColor Yellow
+    Write-Host "(Don't close this window with the X: that skips the second launch.)" -ForegroundColor DarkGray
     Write-Host ""
     claude
 
@@ -600,4 +630,7 @@ try {
   Write-Host $_.Exception.Message -ForegroundColor Yellow
   Write-Host ""
   Read-Host "Press Enter to close this window"
+  # Without this the process exits 0 on failure and the .bat's SHOPOS_EXIT
+  # (and anything reading it) reports success.
+  exit 1
 }

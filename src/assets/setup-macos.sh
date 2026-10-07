@@ -10,7 +10,10 @@ set -e
 # the install: 5s timeout, errors swallowed.
 WORKER_URL="https://shop-os-license-server.glenn-15d.workers.dev"
 CURRENT_STEP="start"
-LOG_LICENSE_KEY="unknown"
+# The personalized .command exports SHOPOS_LICENSE_KEY before this runs, so a
+# failure in the prerequisite steps (the likeliest ones) is still attributable
+# to a customer instead of being logged as "unknown".
+LOG_LICENSE_KEY="${SHOPOS_LICENSE_KEY:-unknown}"
 send_install_log() {
   local err_json=""
   if [ -n "${2:-}" ]; then err_json=",\"error_message\":\"$2\""; fi
@@ -45,6 +48,16 @@ echo "    This is normal: Homebrew needs it to install developer tools."
 echo "    Type it in (the cursor won't move) and press Enter."
 echo ""
 
+# Homebrew may be installed but not on PATH (its shellenv line never made it
+# into the customer's shell profile). Pick it up from the two standard
+# locations before deciding it is missing, otherwise a Mac that already has it
+# is asked for a sudo password and re-runs the Homebrew installer for nothing.
+for brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+  if ! command -v brew &> /dev/null && [ -x "$brew_bin" ]; then
+    eval "$("$brew_bin" shellenv)"
+  fi
+done
+
 # Pre-collect sudo credentials up front so the password prompt happens
 # at the very start, not mid-install after Homebrew has already printed
 # progress noise. Cached for ~5 minutes, long enough for Homebrew to
@@ -64,7 +77,12 @@ CURRENT_STEP="homebrew_install"
 # 1. Check/install Homebrew
 if ! command -v brew &> /dev/null; then
   echo "📦 Installing Homebrew..."
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  echo "   This takes several minutes and the window may look idle while the"
+  echo "   Command Line Tools download. Leave it running."
+  # NONINTERACTIVE=1: Homebrew's installer otherwise stops at "Press RETURN/ENTER
+  # to continue or any other key to abort", which a customer reading the banner
+  # above does not expect. Safe here: sudo credentials were cached just above.
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   # Apple Silicon installs to /opt/homebrew, Intel to /usr/local. Put whichever
   # landed on PATH for the rest of this script.
   if [ -x /opt/homebrew/bin/brew ]; then
@@ -209,7 +227,11 @@ echo "A folder picker will open. Navigate to where you want Blueprint OS install
 echo "(Examples: home folder, Dropbox, Documents)"
 echo ""
 
-PARENT_DIR=$(osascript -e 'POSIX path of (choose folder with prompt "Choose where to install Blueprint OS:")')
+# `tell me to activate` brings the dialog in front of the Terminal window
+# instead of behind it. Cancel makes osascript exit non-zero ("User canceled"),
+# which `set -e` would turn into an abrupt stop before the message below, so
+# catch it on the assignment.
+PARENT_DIR=$(osascript -e 'tell me to activate' -e 'POSIX path of (choose folder with prompt "Choose where to install Blueprint OS:")') || PARENT_DIR=""
 
 if [ -z "$PARENT_DIR" ]; then
   echo "✗ No folder selected. Exiting."
@@ -252,12 +274,20 @@ trap - EXIT
 cd "$VAULT_PATH"
 
 echo "Step 1 of 2: Sign in to Claude Code."
-echo "After signing in, close Claude Code — it will reopen automatically with all commands ready."
+echo "After signing in, type /exit — it will reopen automatically with all commands ready."
 echo ""
 sleep 1
-claude
+# `|| true`: a non-zero exit from Claude (Ctrl-C, a failed sign-in) must not
+# let `set -e` skip the relaunch below.
+claude || true
 
 echo ""
 echo "Relaunching Claude Code with all /bp commands ready..."
 sleep 2
-exec claude
+# Not `exec`: the personalized .command checks this script's exit status to
+# decide whether setup finished. Setup did finish by this point, so Claude's
+# own exit code (Ctrl-C, etc.) must not be reported as a setup failure.
+claude || true
+echo ""
+echo "To open Claude Code in your vault later:  cd \"$VAULT_PATH\" && claude"
+exit 0

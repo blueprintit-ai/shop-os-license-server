@@ -56,6 +56,14 @@ export function buildWindowsBat(info: InstallLicenseInfo): string {
     "if %errorLevel% neq 0 (",
     "  echo Blueprint OS setup needs administrator access. Click Yes on the next prompt.",
     "  powershell -NoProfile -Command \"Start-Process -FilePath '%~f0' -Verb RunAs\"",
+    // Clicking "No" on the UAC prompt makes Start-Process throw; without this
+    // the window closed instantly and the customer saw nothing.
+    "  if %errorLevel% neq 0 (",
+    "    echo.",
+    "    echo Setup was not given administrator access, so it could not start.",
+    "    echo Double-click this file again and click Yes on the prompt.",
+    "    pause",
+    "  )",
     "  exit /b",
     ")",
     "",

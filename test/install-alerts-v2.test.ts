@@ -27,7 +27,7 @@ beforeEach(() => { sent = []; vi.stubGlobal("fetch", async (url: string, init: a
 const seed = (store: Record<string, string>, key = KEY) => { store[key] = JSON.stringify({ customer: "C", email: "c@x.com" }); };
 const post = (env: Env, body: unknown) => worker.fetch(new Request("https://x/install-log", { method: "POST", body: JSON.stringify(body) }), env);
 const sweep = (env: Env) => worker.fetch(new Request("https://x/admin/run-failure-sweep", { method: "POST", headers: { Authorization: "Bearer x" } }), env);
-const put = (store: Record<string, string>, key: string, ts: number, log: any, rand = "aaaa") => { store[`install-log:${key}:${ts}:${rand}`] = JSON.stringify({ license_key: key, timestamp: new Date(ts).toISOString(), ...log }); };
+const put = (store: Record<string, string>, key: string, ts: number, log: any, rand = "aaaa") => { if (!key.startsWith("FAKE-") && !store[key]) seed(store, key); store[`install-log:${key}:${ts}:${rand}`] = JSON.stringify({ license_key: key, timestamp: new Date(ts).toISOString(), ...log }); };
 
 describe("immediate failure alert (v2)", () => {
   it("emails once per run with support code, command, tail and hint", async () => {
@@ -121,6 +121,61 @@ describe("hung-run sweep", () => {
     await sweep(env);
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toContain("never-sent");
+  });
+});
+
+describe("sweep quota protection and key validation", () => {
+  const old = (store: Record<string, string>, key: string, i = 0) => put(store, key, Date.now() - 2 * 3600e3 - i * 1000, { status: "error", step: "x", error_message: "e" + i });
+  it("fake license keys never email; a real one does", async () => {
+    const { env, store } = makeEnv();
+    old(store, "FAKE-1"); old(store, "FAKE-2");
+    put(store, "FAKE-3", Date.now() - 50 * 60e3, { status: "progress", step: "a" });
+    old(store, KEY);
+    await sweep(env);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toContain(KEY);
+  });
+  it("caps emails at 10 per sweep with 50 licenses and flags truncated, under budget", async () => {
+    const { env, store } = makeEnv();
+    let ops = 0;
+    const kv = env.LICENSES as any;
+    for (const m of ["get", "put", "list"]) { const o = kv[m].bind(kv); kv[m] = async (...a: any[]) => { ops++; return o(...a); }; }
+    for (let i = 0; i < 25; i++) old(store, `SHOP-AAAA-BBBB-${String(i).padStart(4, "0")}`, i);
+    for (let i = 0; i < 25; i++) old(store, `FAKE-${i}`, i);
+    const res: any = await (await sweep(env)).json();
+    expect(sent).toHaveLength(10);
+    expect(res.truncated).toBe(true);
+    expect(ops).toBeLessThan(1000);
+  });
+  it("license_key charset: ':' rejected; unknown, SHOP-... and lowercase accepted", async () => {
+    const { env } = makeEnv();
+    const code = async (k: string) => (await post(env, { license_key: k, status: "success", step: "x" })).status;
+    expect(await code("SHOP-AB12-CD34-EF56:9999999999999:x")).toBe(400);
+    expect(await code("a b")).toBe(400);
+    expect(await code("unknown")).toBe(200);
+    expect(await code("SHOP-AB12-CD34-EF56")).toBe(200);
+    expect(await code("shop-ab12-cd34-ef56")).toBe(200);
+  });
+  it("timeline outTail and error keep the END of long text", async () => {
+    const { env, store } = makeEnv();
+    await post(env, { license_key: KEY, status: "success", timeline: [{ id: "a", outTail: "H".repeat(2000) + "TAILEND", error: "H".repeat(900) + "ERREND" }] });
+    const v = JSON.parse(store[Object.keys(store).find((k) => k.startsWith("install-log:"))!]);
+    expect(v.timeline[0].outTail.endsWith("TAILEND")).toBe(true);
+    expect(v.timeline[0].error.endsWith("ERREND")).toBe(true);
+  });
+  it("immediate alert runs through ctx.waitUntil when provided", async () => {
+    const { env, store } = makeEnv(); seed(store);
+    const pending: Promise<unknown>[] = [];
+    await worker.fetch(new Request("https://x/install-log", { method: "POST", body: JSON.stringify({ license_key: KEY, status: "error", step: "x", run_id: "w1" }) }), env, { waitUntil: (p: Promise<unknown>) => { pending.push(p); } } as any);
+    expect(pending).toHaveLength(1);
+    await Promise.all(pending);
+    expect(sent).toHaveLength(1);
+  });
+  it("flags truncated when the 25-page key listing was cut short", async () => {
+    const { env, store } = makeEnv(1);
+    for (let i = 0; i < 30; i++) put(store, "FAKE-" + String(i).padStart(3, "0"), Date.now() - 3600e3, { status: "success" }, "k" + i + "xx");
+    const res: any = await (await sweep(env)).json();
+    expect(res.truncated).toBe(true);
   });
 });
 

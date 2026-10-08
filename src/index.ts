@@ -94,32 +94,95 @@ export interface Env {
 interface InstallLog {
   license_key: string;
   timestamp: string;
-  // success/error/retry arrive via POST /install-log from the installers;
+  // success/error/retry/progress arrive via POST /install-log from the installers;
   // page_view/download are written internally by the funnel routes so the
   // admin view shows the whole journey per key.
-  status: "success" | "error" | "retry" | "page_view" | "download";
+  status: "success" | "error" | "retry" | "progress" | "page_view" | "download";
   error_message?: string;
   step?: string;
   machine?: { os?: string; ps_version?: string; username?: string; source?: string };
+  // v2 installer diagnostics (all optional; old installers never send them)
+  run_id?: string;
+  support_code?: string;
+  step_title?: string;
+  command?: string;
+  exit_code?: number;
+  output_tail?: string;
+  hint?: string;
+  duration_ms?: number;
+  installer_version?: string;
+  notes?: string[];
+  timeline?: Record<string, unknown>[];
+  snapshot?: Record<string, unknown>;
+}
+
+const MAX_LOG_BYTES = 32 * 1024;
+const byteLen = (s: string) => new TextEncoder().encode(s).length;
+const str = (v: unknown, max: number) => (typeof v === "string" && v ? v.slice(0, max) : undefined);
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
+const put = <T extends object>(o: T, k: string, v: unknown) => { if (v !== undefined) (o as any)[k] = v; };
+
+// Keep only the timeline fields the installer's step runner produces, capped.
+function cleanTimelineEntry(e: unknown): Record<string, unknown> | undefined {
+  if (!isObj(e)) return undefined;
+  const out: Record<string, unknown> = {};
+  put(out, "id", str(e.id, 80));
+  put(out, "title", str(e.title, 160));
+  put(out, "status", str(e.status, 20));
+  put(out, "attempts", num(e.attempts));
+  put(out, "durationMs", num(e.durationMs));
+  put(out, "error", str(e.error, 600));
+  put(out, "command", str(e.command, 300));
+  put(out, "exitCode", num(e.exitCode));
+  put(out, "outTail", str(e.outTail, 1500));
+  put(out, "hint", str(e.hint, 300));
+  if (e.retried === true) out.retried = true;
+  return out;
 }
 
 async function handleInstallLog(req: Request, env: Env): Promise<Response> {
-  let body: InstallLog;
+  let body: any;
   try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
-  if (!body.license_key || !body.status || !["success", "error", "retry"].includes(body.status)) {
-    return json(req, { error: "license_key and status are required (success | error | retry)" }, 400);
+  if (!isObj(body) || !body.license_key || !body.status || !["success", "error", "retry", "progress"].includes(body.status)) {
+    return json(req, { error: "license_key and status are required (success | error | retry | progress)" }, 400);
   }
   const timestamp = new Date().toISOString();
-  const log: InstallLog = {
-    license_key: body.license_key,
-    timestamp,
-    status: body.status,
-    ...(body.error_message ? { error_message: body.error_message } : {}),
-    ...(body.step ? { step: body.step } : {}),
-    ...(body.machine ? { machine: body.machine } : {}),
-  };
-  const kvKey = `install-log:${body.license_key}:${Date.now()}`;
-  await env.LICENSES.put(kvKey, JSON.stringify(log), { expirationTtl: 180 * 24 * 60 * 60 });
+  const log: InstallLog = { license_key: String(body.license_key).slice(0, 64), timestamp, status: body.status };
+  put(log, "error_message", str(body.error_message, 4000));
+  put(log, "step", str(body.step, 120));
+  if (isObj(body.machine)) {
+    const m: Record<string, string> = {};
+    for (const k of ["os", "ps_version", "username", "source"]) { const v = str(body.machine[k], 120); if (v) m[k] = v; }
+    log.machine = m;
+  }
+  put(log, "run_id", str(body.run_id, 64));
+  put(log, "support_code", str(body.support_code, 16));
+  put(log, "step_title", str(body.step_title, 160));
+  put(log, "command", str(body.command, 1000));
+  put(log, "exit_code", num(body.exit_code));
+  put(log, "output_tail", str(body.output_tail, 6000));
+  put(log, "hint", str(body.hint, 300));
+  put(log, "duration_ms", num(body.duration_ms));
+  put(log, "installer_version", str(body.installer_version, 20));
+  if (Array.isArray(body.notes)) {
+    const notes = body.notes.filter((n: unknown) => typeof n === "string" && n).slice(0, 10).map((n: string) => n.slice(0, 300));
+    if (notes.length) log.notes = notes;
+  }
+  if (Array.isArray(body.timeline)) {
+    log.timeline = body.timeline.slice(0, 30).map(cleanTimelineEntry).filter((e: unknown): e is Record<string, unknown> => !!e);
+  }
+  if (isObj(body.snapshot)) log.snapshot = body.snapshot;
+
+  // Hard ceiling: shed the bulkiest parts first so the headline fields always survive.
+  const fits = () => byteLen(JSON.stringify(log)) <= MAX_LOG_BYTES;
+  if (!fits() && log.timeline) log.timeline = log.timeline.map(({ outTail, ...rest }) => rest);
+  if (!fits()) delete log.snapshot;
+  if (!fits()) delete log.timeline;
+  if (!fits()) { log.output_tail = log.output_tail?.slice(-2000); log.error_message = log.error_message?.slice(0, 1500); }
+  if (!fits()) { delete log.notes; delete log.command; }
+  const stored = JSON.stringify(log);
+  await env.LICENSES.put(`install-log:${log.license_key}:${Date.now()}`, stored, { expirationTtl: 180 * 24 * 60 * 60 });
   return json(req, { ok: true, logged_at: timestamp });
 }
 

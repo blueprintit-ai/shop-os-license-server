@@ -116,6 +116,13 @@ export const INSTALLS_HTML = `<!DOCTYPE html>
   }
   .pill.ok { background: var(--ok-bg); color: var(--ok); }
   .pill.error { background: var(--danger-bg); color: var(--danger); }
+  .pill.progress { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+  pre.tail, .tl-x { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+  pre.tail { background: var(--surface); border: 1px solid var(--border); padding: 8px; margin: 4px 0 8px; max-height: 260px; overflow: auto; }
+  .err-row .snapkv { margin-right: 10px; white-space: nowrap; }
+  .err-row table.tl { width: auto; margin: 4px 0; }
+  .err-row table.tl td { padding: 3px 10px 3px 0; border-bottom: none; }
+  .err-row ul.notes { margin: 2px 0 6px 18px; }
   .pill.retry { background: #FEF6E0; color: #92511F; }
   .pill.mac { background: #EFF4FA; color: #1F2A44; }
   .pill.win { background: #F0F0FF; color: #3B3B8F; }
@@ -181,6 +188,7 @@ export const INSTALLS_HTML = `<!DOCTYPE html>
         <option value="success">Success only</option>
         <option value="error">Errors only</option>
         <option value="retry">Retried steps</option>
+        <option value="progress">In progress</option>
       </select>
     </div>
     <div class="table-wrap">
@@ -280,7 +288,55 @@ function relTime(iso) {
 }
 
 function esc(s) {
-  return String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtMs(ms) {
+  if (typeof ms !== 'number' || !isFinite(ms)) return '';
+  return ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(1) + 's';
+}
+
+// Every value below comes from an unauthenticated endpoint: escape all of it.
+function detailHtml(log) {
+  const out = [];
+  const line = function(label, val) {
+    if (val === undefined || val === null || val === '') return;
+    out.push('<div><span class="muted">' + esc(label) + '</span> ' + esc(val) + '</div>');
+  };
+  line('Support code', log.support_code);
+  line('Run', log.run_id);
+  line('Step', log.step_title ? log.step_title + (log.step ? ' (' + log.step + ')' : '') : log.step);
+  if (log.error_message) out.push('<div class="err-msg">' + esc(log.error_message) + '</div>');
+  line('Looks like', log.hint);
+  line('Command', log.command ? log.command + (log.exit_code != null ? '  (exit ' + log.exit_code + ')' : '') : '');
+  if (log.output_tail) out.push('<div class="muted">Last output</div><pre class="tail">' + esc(log.output_tail) + '</pre>');
+  line('Ran for', fmtMs(log.duration_ms));
+  line('Installer', log.installer_version ? 'v' + log.installer_version : '');
+  const m = log.machine || {};
+  line('Machine', [m.os, m.ps_version, m.source].filter(Boolean).join(' / '));
+  if (Array.isArray(log.notes) && log.notes.length) {
+    out.push('<div class="muted">Notes</div><ul class="notes">' + log.notes.map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>');
+  }
+  const snap = log.snapshot && typeof log.snapshot === 'object' ? log.snapshot : null;
+  if (snap) {
+    const keys = Object.keys(snap);
+    if (keys.length) {
+      out.push('<div class="muted">Snapshot</div><div class="snap">' + keys.map(function(k) {
+        const v = snap[k];
+        return '<span class="snapkv"><b>' + esc(k) + '</b> ' + esc(v !== null && typeof v === 'object' ? JSON.stringify(v) : v) + '</span>';
+      }).join(' ') + '</div>');
+    }
+  }
+  if (Array.isArray(log.timeline) && log.timeline.length) {
+    out.push('<div class="muted">Timeline</div><table class="tl"><tbody>' + log.timeline.map(function(e) {
+      e = e || {};
+      const n = typeof e.attempts === 'number' && e.attempts > 1 ? e.attempts - 1 : 1;
+      const badge = e.retried ? ' <span class="pill retry">retried ' + n + ' time' + (n === 1 ? '' : 's') + '</span>' : '';
+      const extra = [e.error, e.hint, e.command, e.outTail].filter(Boolean).map(function(x) { return '<div class="tl-x">' + esc(x) + '</div>'; }).join('');
+      return '<tr><td>' + esc(e.title || e.id) + badge + extra + '</td><td>' + esc(e.status) + '</td><td>' + esc(fmtMs(e.durationMs)) + '</td></tr>';
+    }).join('') + '</tbody></table>');
+  }
+  return out.join('');
 }
 
 function osShort(s) {
@@ -296,11 +352,11 @@ function render() {
     if (filt !== 'all' && log.status !== filt) return false;
     if (!q) return true;
     const lic = STATE.licenseMap[log.license_key] || {};
-    const hay = [log.license_key, lic.customer, lic.email, (log.machine || {}).username].join(' ').toLowerCase();
+    const hay = [log.license_key, lic.customer, lic.email, (log.machine || {}).username, log.support_code, log.run_id].join(' ').toLowerCase();
     return hay.includes(q);
   });
 
-  const total  = STATE.logs.length;
+  const total  = STATE.logs.filter(l => l.status !== 'progress').length;
   const succ   = STATE.logs.filter(l => l.status === 'success').length;
   const errs   = STATE.logs.filter(l => l.status === 'error').length;
   const retries= STATE.logs.filter(l => l.status === 'retry').length;
@@ -338,13 +394,17 @@ function render() {
       ? '<span class="customer-name">' + esc(lic.customer) + '</span>' +
         (lic.email ? '<br><span class="muted">' + esc(lic.email) + '</span>' : '')
       : '<span class="muted">' + (log.license_key === 'unknown' ? '—' : 'key not in licenses') + '</span>';
-    const statusCell = isErr
+    const hasRetried = Array.isArray(log.timeline) && log.timeline.some(function(e) { return e && e.retried; });
+    const isProg  = log.status === 'progress';
+    const statusCell = isProg
+      ? '<span class="pill progress">In progress</span>' + (log.step ? '<span class="step">' + esc(log.step_title || log.step) + '</span>' : '')
+      : isErr
       ? '<span class="pill error">Error</span>' + (log.step ? '<span class="step">' + esc(log.step) + '</span>' : '')
       : isRetry
         ? '<span class="pill retry">Retry</span>' + (log.step ? '<span class="step">' + esc(log.step) + '</span>' : '')
-        : '<span class="pill ok">Success</span>';
+        : '<span class="pill ok">Success</span>' + (hasRetried ? ' <span class="pill retry">retried steps</span>' : '');
     const username = esc((log.machine || {}).username || '—');
-    const hasDetail = (isErr || isRetry) && log.error_message;
+    const hasDetail = ((isErr || isRetry) && log.error_message) || log.support_code || log.output_tail || log.command || (Array.isArray(log.notes) && log.notes.length) || hasRetried;
 
     rows.push(
       '<tr class="data-row' + (hasDetail ? ' has-error' : '') + '" data-i="' + i + '">' +
@@ -361,7 +421,7 @@ function render() {
     if (hasDetail) {
       rows.push(
         '<tr class="err-row hidden" data-for="' + i + '">' +
-          '<td colspan="7"><div class="err-msg">' + esc(log.error_message) + '</div></td>' +
+          '<td colspan="7">' + detailHtml(log) + '</td>' +
         '</tr>'
       );
     }
@@ -398,6 +458,7 @@ $('#refresh-btn').addEventListener('click', loadData);
 $('#search').addEventListener('input', render);
 $('#filter-status').addEventListener('change', render);
 
+try { const run = new URLSearchParams(location.search).get('run'); if (run) $('#search').value = run; } catch (e) {}
 if (STATE.token) showApp();
 else showLogin();
 </script>

@@ -28,6 +28,9 @@ export interface LicenseRecord {
   // route. (Older KV records may carry legacy `entitlements`/`cohort` fields;
   // they are preserved in storage but no longer read or written.)
   lifetimeUpdates: boolean;
+  // Which installer this customer's /install link serves. Absent = legacy
+  // (or DEFAULT_INSTALLER). Set only via POST /admin/set-installer.
+  installer?: "legacy" | "v2";
   metadata?: {
     paymentProvider?: "stripe" | "paypal";
     paymentId?: string;

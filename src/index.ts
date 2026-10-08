@@ -7,6 +7,7 @@
  *   GET  /validate?key=...       -> validate a license key (public)
  *   GET  /refresh?key=...        -> re-validate, bump last_seen (public, used by skills periodically)
  *   POST /issue                  -> issue a new license key (admin: requires bearer ADMIN_TOKEN)
+ *   POST /admin/set-installer?key=...&installer=legacy|v2 -> choose which installer a customer's /install link serves (admin)
  *   POST /revoke?key=...         -> soft revoke (sets cancelled_at; record preserved) (admin)
  *   POST /delete?key=...         -> hard delete (wipes KV record + cached PDF) (admin)
  *   POST /delete-bulk            -> hard delete an array of keys (admin, max 200/call)
@@ -32,11 +33,14 @@ import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
 import { handlePayPalWebhook } from "./handlers/paypal-webhook.js";
 import { handlePaymentSuccess, renderWelcomePdfBytes, sendWelcomeEmailForLicense } from "./handlers/payment-success.js";
 import { welcomeHtml, welcomeText } from "./email/welcome-template.js";
-import { buildInstallPage, buildInvalidKeyPage, buildMacCommand, buildWindowsBat, buildZipWithExecutable } from "./install-page.js";
+import { type InstallerKind, buildInstallPage, buildInvalidKeyPage, buildMacCommand, buildWindowsBat, buildZipWithExecutable } from "./install-page.js";
 
 export interface Env {
   LICENSES: KVNamespace;
   ADMIN_TOKEN: string;
+  // "v2" makes records without an installer flag get the v2 installer.
+  // Unset (the default, and not in wrangler.toml) means legacy.
+  DEFAULT_INSTALLER?: string;
   SERVICE_NAME: string;
   SERVICE_VERSION: string;
 
@@ -94,32 +98,114 @@ export interface Env {
 interface InstallLog {
   license_key: string;
   timestamp: string;
-  // success/error/retry arrive via POST /install-log from the installers;
+  // success/error/retry/progress arrive via POST /install-log from the installers;
   // page_view/download are written internally by the funnel routes so the
   // admin view shows the whole journey per key.
-  status: "success" | "error" | "retry" | "page_view" | "download";
+  status: "success" | "error" | "retry" | "progress" | "page_view" | "download";
   error_message?: string;
   step?: string;
   machine?: { os?: string; ps_version?: string; username?: string; source?: string };
+  // v2 installer diagnostics (all optional; old installers never send them)
+  run_id?: string;
+  support_code?: string;
+  step_title?: string;
+  command?: string;
+  exit_code?: number;
+  output_tail?: string;
+  hint?: string;
+  duration_ms?: number;
+  installer_version?: string;
+  truncated?: boolean;
+  notes?: string[];
+  timeline?: Record<string, unknown>[];
+  snapshot?: Record<string, unknown>;
 }
 
-async function handleInstallLog(req: Request, env: Env): Promise<Response> {
-  let body: InstallLog;
+const MAX_LOG_BYTES = 32 * 1024;
+const byteLen = (s: string) => new TextEncoder().encode(s).length;
+const str = (v: unknown, max: number) => (typeof v === "string" && v ? v.slice(0, max) : undefined);
+const strTail = (v: unknown, max: number) => (typeof v === "string" && v ? v.slice(-max) : undefined);
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
+const put = <T extends object>(o: T, k: string, v: unknown) => { if (v !== undefined) (o as any)[k] = v; };
+
+// Keep only the timeline fields the installer's step runner produces, capped.
+function cleanTimelineEntry(e: unknown): Record<string, unknown> | undefined {
+  if (!isObj(e)) return undefined;
+  const out: Record<string, unknown> = {};
+  put(out, "id", str(e.id, 80));
+  put(out, "title", str(e.title, 160));
+  put(out, "status", str(e.status, 20));
+  put(out, "attempts", num(e.attempts));
+  put(out, "durationMs", num(e.durationMs));
+  put(out, "error", strTail(e.error, 600));
+  put(out, "command", str(e.command, 300));
+  put(out, "exitCode", num(e.exitCode));
+  put(out, "outTail", strTail(e.outTail, 1500));
+  put(out, "hint", str(e.hint, 300));
+  if (e.retried === true) out.retried = true;
+  return out;
+}
+
+async function handleInstallLog(req: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
+  let body: any;
   try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
-  if (!body.license_key || !body.status || !["success", "error", "retry"].includes(body.status)) {
-    return json(req, { error: "license_key and status are required (success | error | retry)" }, 400);
+  if (!isObj(body) || typeof body.license_key !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(body.license_key.trim()) || !body.status || !["success", "error", "retry", "progress"].includes(body.status)) {
+    return json(req, { error: "license_key and status are required (success | error | retry | progress)" }, 400);
   }
   const timestamp = new Date().toISOString();
-  const log: InstallLog = {
-    license_key: body.license_key,
-    timestamp,
-    status: body.status,
-    ...(body.error_message ? { error_message: body.error_message } : {}),
-    ...(body.step ? { step: body.step } : {}),
-    ...(body.machine ? { machine: body.machine } : {}),
-  };
-  const kvKey = `install-log:${body.license_key}:${Date.now()}`;
-  await env.LICENSES.put(kvKey, JSON.stringify(log), { expirationTtl: 180 * 24 * 60 * 60 });
+  const log: InstallLog = { license_key: body.license_key.trim().slice(0, 64), timestamp, status: body.status };
+  put(log, "error_message", str(body.error_message, 4000));
+  put(log, "step", str(body.step, 120));
+  if (isObj(body.machine)) {
+    const m: Record<string, string> = {};
+    for (const k of ["os", "ps_version", "username", "source"]) { const v = str(body.machine[k], 120); if (v) m[k] = v; }
+    log.machine = m;
+  }
+  if (body.truncated === true) log.truncated = true;
+  put(log, "run_id", str(body.run_id, 64));
+  put(log, "support_code", str(body.support_code, 16));
+  put(log, "step_title", str(body.step_title, 160));
+  put(log, "command", str(body.command, 1000));
+  put(log, "exit_code", num(body.exit_code));
+  put(log, "output_tail", str(body.output_tail, 6000));
+  put(log, "hint", str(body.hint, 300));
+  put(log, "duration_ms", num(body.duration_ms));
+  put(log, "installer_version", str(body.installer_version, 20));
+  if (Array.isArray(body.notes)) {
+    const notes = body.notes.filter((n: unknown) => typeof n === "string" && n).slice(0, 10).map((n: string) => n.slice(0, 300));
+    if (notes.length) log.notes = notes;
+  }
+  if (Array.isArray(body.timeline)) {
+    log.timeline = body.timeline.slice(0, 30).map(cleanTimelineEntry).filter((e: Record<string, unknown> | undefined): e is Record<string, unknown> => !!e && Object.keys(e).length > 0);
+  }
+  if (isObj(body.snapshot)) log.snapshot = body.snapshot;
+
+  // Hard ceiling: shed the bulkiest parts first so the headline fields always survive.
+  const fits = () => byteLen(JSON.stringify(log)) <= MAX_LOG_BYTES;
+  if (!fits() && log.timeline) log.timeline = log.timeline.map(({ outTail, ...rest }) => rest);
+  if (!fits()) delete log.snapshot;
+  if (!fits()) delete log.timeline;
+  if (!fits()) { log.output_tail = log.output_tail?.slice(-2000); log.error_message = log.error_message?.slice(0, 1500); }
+  if (!fits()) { delete log.notes; delete log.command; }
+  const stored = JSON.stringify(log);
+  // Progress is chatty (~10-15 entries per run): short TTL keeps the 1000-key list windows usable.
+  const ttlDays = log.status === "progress" ? 7 : 180;
+  const rand = Math.random().toString(36).slice(2, 6).padEnd(4, "0");
+  await env.LICENSES.put(`install-log:${log.license_key}:${Date.now()}:${rand}`, stored, { expirationTtl: ttlDays * 24 * 60 * 60 });
+  if (log.status === "error" && log.run_id) {
+    const alertNow = async () => {
+      try {
+        const marker = `install-alert-now:${log.license_key}:${log.run_id}`;
+        if (!(await env.LICENSES.get(marker)) && (await immediateAlertAllowed(env, log.license_key))) {
+          const ok = await sendInstallAlert(env, `Blueprint OS install failed: ${log.support_code ?? log.license_key} (${log.step_title ?? log.step ?? "unknown step"})`, buildInstallAlertText(log, log.license_key));
+          if (ok) await env.LICENSES.put(marker, "1", { expirationTtl: 7 * 24 * 3600 });
+        }
+      } catch { /* an alert problem never fails the report */ }
+    };
+    // waitUntil so a client abort cannot cancel the email; awaited when no ctx (tests).
+    if (ctx) ctx.waitUntil(alertNow()); else await alertNow();
+  }
   return json(req, { ok: true, logged_at: timestamp });
 }
 
@@ -184,17 +270,124 @@ async function handleInstallStatus(req: Request, url: URL, env: Env): Promise<Re
   return json(req, { installed: false });
 }
 
+const ADMIN_INSTALLS_URL = "https://shop-os-license-server.glenn-15d.workers.dev/admin/installs";
+
+// Everything in an InstallLog except license_key/timestamp/status comes from an
+// unauthenticated endpoint. Flatten control characters (CR/LF would let a
+// stored value forge extra header-like lines) and cap the length.
+const oneLine = (v: unknown, max = 300): string =>
+  String(v ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, max);
+const multiLine = (v: unknown, max = 6000): string =>
+  String(v ?? "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").slice(0, max);
+const escHtml = (s: string): string =>
+  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+export function buildInstallAlertText(log: InstallLog, licRaw: string, extra: { hungMinutes?: number } = {}): string {
+  const lic = oneLine(licRaw, 64);
+  const snap = (isObj(log.snapshot) ? log.snapshot : {}) as Record<string, unknown>;
+  const title = oneLine(log.step_title), step = oneLine(log.step);
+  const retried = (Array.isArray(log.timeline) ? log.timeline : []).filter((e) => isObj(e) && e.retried === true);
+  const notes = (Array.isArray(log.notes) ? log.notes : []).map((n) => oneLine(n)).filter(Boolean);
+  const os = oneLine(log.machine?.os ?? snap.os) || "unknown";
+  const lines = [
+    extra.hungMinutes != null
+      ? `A Blueprint OS install for ${lic} may be HUNG: last report was ${extra.hungMinutes} minutes ago and nothing came after it.`
+      : `A Blueprint OS install for ${lic} failed.`,
+    ``,
+    ...(log.support_code ? [`Support code: ${oneLine(log.support_code)}`] : []),
+    `Step:  ${title || step || "unknown"}${title && step ? ` (${step})` : ""}`,
+    ...(log.error_message ? [`Error: ${oneLine(log.error_message, 1500)}`] : []),
+    ...(log.hint ? [`Looks like: ${oneLine(log.hint)}`] : []),
+    ...(log.command ? [`Command: ${oneLine(log.command, 1000)}${log.exit_code != null ? `  (exit ${oneLine(log.exit_code, 12)})` : ""}`] : []),
+    ...(log.output_tail ? [``, `Last output:`, multiLine(log.output_tail)] : []),
+    ...(retried.length
+      ? [``, `Retried steps:`, ...retried.map((e) => {
+          const n = typeof e.attempts === "number" && e.attempts > 1 ? e.attempts - 1 : 1;
+          return `- ${oneLine(e.title ?? e.id, 160) || "unknown"}: retried ${n} time${n === 1 ? "" : "s"}`;
+        })]
+      : []),
+    ...(notes.length ? [``, `Notes:`, ...notes.map((n) => `- ${n}`)] : []),
+    ``,
+    `When:  ${oneLine(log.timestamp, 40)}`,
+    `OS:    ${os} (${oneLine(log.machine?.source) || "installer"})`,
+    ...(snap.node ? [`Node:  ${oneLine(snap.node, 40)}`] : []),
+    ...(snap.git !== undefined ? [`Git:   ${snap.git === true ? "present" : snap.git === false ? "absent" : oneLine(snap.git, 40)}`] : []),
+    ...(snap.elevated !== undefined ? [`Admin: ${snap.elevated === true ? "yes" : snap.elevated === false ? "no" : oneLine(snap.elevated, 40)}`] : []),
+    ...(log.duration_ms != null ? [`Ran for: ${Math.round(log.duration_ms / 1000)}s`] : []),
+    ...(log.installer_version ? [`Installer: v${oneLine(log.installer_version, 20)}`] : []),
+    ``,
+    `Full step timeline: ${ADMIN_INSTALLS_URL}${log.run_id ? `?run=${encodeURIComponent(oneLine(log.run_id, 64))}` : ""}`,
+  ];
+  return lines.join("\n");
+}
+
+// The report endpoint is unauthenticated: only email immediately for a real
+// license and under a small global hourly cap. Otherwise the sweep covers it.
+const IMMEDIATE_ALERT_HOURLY_CAP = 10;
+async function immediateAlertAllowed(env: Env, licenseKey: string): Promise<boolean> {
+  const record = await env.LICENSES.get(licenseKey.toUpperCase(), "json");
+  if (!record) return false;
+  const capKey = `install-alert-cap:${new Date().toISOString().slice(0, 13)}`;
+  const n = Number((await env.LICENSES.get(capKey)) ?? 0) || 0;
+  if (n >= IMMEDIATE_ALERT_HOURLY_CAP) return false;
+  await env.LICENSES.put(capKey, String(n + 1), { expirationTtl: 2 * 3600 });
+  return true;
+}
+
+// Sends the text as plain text plus an escaped HTML twin (clients that render
+// HTML show the stored values as literal text, never as markup).
+async function sendInstallAlert(env: Env, subject: string, text: string): Promise<boolean> {
+  if (!env.RESEND_API_KEY) return false;
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "Blueprint.ai <glenn@blueprintit.ai>",
+        to: "glenn@blueprintit.ai",
+        subject: oneLine(subject, 200),
+        text,
+        html: `<pre style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;white-space:pre-wrap">${escHtml(text)}</pre>`,
+      }),
+    });
+    return resp.ok;
+  } catch { return false; }
+}
+
+// KV list() returns at most 1000 keys per call; follow the cursor (bounded).
+async function listAllKeys(env: Env, prefix: string, maxPages = 25, counter?: { ops: number; cut?: boolean }): Promise<string[]> {
+  const names: string[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    if (counter) counter.ops++;
+    const res = await env.LICENSES.list({ prefix, limit: 1000, ...(cursor ? { cursor } : {}) }) as { keys: { name: string }[]; list_complete?: boolean; cursor?: string };
+    for (const k of res.keys) names.push(k.name);
+    if (res.list_complete !== false || !res.cursor) break;
+    cursor = res.cursor;
+    if (page === maxPages - 1 && counter) counter.cut = true;
+  }
+  return names;
+}
+// install-log:{key}:{ms}[:{rand}] -> ms
+const keyTs = (name: string): number => Number(name.split(":")[2]);
+
 // Failure sweep: for every license with an install error that is 30min-24h
 // old and has no later success, send one ops alert email (deduped per error
-// via an install-alert marker, 7-day TTL). Runs on the cron trigger and via
-// POST /admin/run-failure-sweep.
-async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts: number }> {
-  if (!env.RESEND_API_KEY) return { checked: 0, alerts: 0 };
+// via an install-alert marker, 7-day TTL). Also flags runs that look hung: the
+// latest report is a `progress` older than 30 min (a run that ended in
+// success/error is never hung; the launch step sends no progress report).
+// Runs on the cron trigger and via POST /admin/run-failure-sweep.
+const SWEEP_KV_BUDGET = 800;
+async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts: number; truncated: boolean }> {
+  if (!env.RESEND_API_KEY) return { checked: 0, alerts: 0, truncated: false };
   const now = Date.now();
-  const list = await env.LICENSES.list({ prefix: "install-log:", limit: 1000 });
+  // Workers cap subrequests (1000); count every KV operation and stop cleanly.
+  const budget: { ops: number; cut?: boolean } = { ops: 0 };
+  const left = () => SWEEP_KV_BUDGET - budget.ops;
+  const names = await listAllKeys(env, "install-log:", 25, budget);
   const byKey = new Map<string, { ts: number; name: string }[]>();
-  for (const k of list.keys) {
-    const parts = k.name.split(":");
+  for (const name of names) {
+    const parts = name.split(":");
     if (parts.length < 3) continue;
     const ts = Number(parts[2]);
     if (!Number.isFinite(ts)) continue;
@@ -202,53 +395,73 @@ async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts:
     if (lic === "unknown") continue;
     if (now - ts > 24 * 3600e3) continue;
     if (!byKey.has(lic)) byKey.set(lic, []);
-    byKey.get(lic)!.push({ ts, name: k.name });
+    byKey.get(lic)!.push({ ts, name });
   }
+  for (const e of byKey.values()) e.sort((a, b) => a.ts - b.ts);
+  // Newest activity first so the freshest installs are served if the budget runs out.
+  const ordered = [...byKey.entries()].sort((a, b) => b[1][b[1].length - 1].ts - a[1][a[1].length - 1].ts);
   let alerts = 0;
-  for (const [lic, entries] of byKey) {
-    entries.sort((a, b) => a.ts - b.ts);
-    const loaded = await Promise.all(
-      entries.slice(-20).map(async (e) => ({ ts: e.ts, log: await env.LICENSES.get<InstallLog>(e.name, "json") })),
+  let sent = 0;
+  let truncated = !!budget.cut;
+  const MAX_EMAILS_PER_SWEEP = 10;
+  for (const [lic, entries] of ordered) {
+    let licOk: boolean | undefined;
+    // Reports are unauthenticated: only email for real licenses, and cap emails per run.
+    const mayEmail = async (): Promise<boolean> => {
+      if (sent >= MAX_EMAILS_PER_SWEEP) { truncated = true; return false; }
+      if (licOk === undefined) { budget.ops++; licOk = !!(await env.LICENSES.get(lic.toUpperCase(), "json")); }
+      return licOk;
+    };
+    // loads + up to 2 marker gets + 2 puts
+    if (left() < 8) { truncated = true; break; }
+    const take = Math.min(200, entries.length, left() - 6);
+    if (take < entries.length) truncated = true;
+    budget.ops += take;
+    // Progress entries are written ~10-15 per run; load the last 24h (bounded) and
+    // drop progress before applying the 20-entry window.
+    const all = await Promise.all(
+      entries.slice(-take).map(async (e) => ({ ts: e.ts, log: await env.LICENSES.get<InstallLog>(e.name, "json").catch(() => null) })),
     );
+    const present = all.filter((l) => l.log);
+    const loaded = present.filter((l) => l.log!.status !== "progress").slice(-20);
+
+    // Hung run: the newest install report (ignoring funnel page_view/download) is a
+    // mid-run report (progress, or a retry from the step runner).
+    const lastReport = [...present].reverse().find((l) => ["progress", "success", "error", "retry"].includes(l.log!.status));
+    if (lastReport && (lastReport.log!.status === "progress" || lastReport.log!.status === "retry") && now - lastReport.ts >= 30 * 60e3) {
+      const marker = `install-alert-hung:${lic}:${lastReport.ts}`;
+      budget.ops++;
+      if (!(await env.LICENSES.get(marker))) {
+        const minutes = Math.round((now - lastReport.ts) / 60e3);
+        const lg = lastReport.log!;
+        const sub = `Blueprint OS install may be stuck: ${lg.support_code ?? lic} (${lg.step_title ?? lg.step ?? "unknown step"})`;
+        budget.ops += 2;
+        if ((await mayEmail()) && (await sendInstallAlert(env, sub, buildInstallAlertText(lg, lic, { hungMinutes: minutes })))) {
+          await env.LICENSES.put(marker, "1", { expirationTtl: 7 * 24 * 3600 });
+          alerts++; sent++;
+        }
+      }
+    }
+
     const errors = loaded.filter((l) => l.log?.status === "error" && now - l.ts >= 30 * 60e3);
     if (errors.length === 0) continue;
     const lastError = errors[errors.length - 1];
     if (loaded.some((l) => l.log?.status === "success" && l.ts > lastError.ts)) continue;
-    const marker = `install-alert:${lic}:${lastError.ts}`;
-    if (await env.LICENSES.get(marker)) continue;
     const log = lastError.log!;
-    const text = [
-      `A Blueprint OS install for ${lic} failed and has not succeeded since.`,
-      ``,
-      `Step:  ${log.step ?? "unknown"}`,
-      `Error: ${log.error_message ?? "(none recorded)"}`,
-      `When:  ${log.timestamp}`,
-      `OS:    ${log.machine?.os ?? "unknown"} (${log.machine?.source ?? "installer"})`,
-      ``,
-      `Full history: https://shop-os-license-server.glenn-15d.workers.dev/admin/installs`,
-      ``,
-      `Suggested move: email the customer their booking link before they email you.`,
-    ].join("\n");
-    try {
-      const resp = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: "Blueprint.ai <glenn@blueprintit.ai>",
-          to: "glenn@blueprintit.ai",
-          subject: `Blueprint OS install failed: ${lic} (${log.step ?? "unknown step"})`,
-          text,
-        }),
-      });
-      if (resp.ok) {
-        await env.LICENSES.put(marker, "1", { expirationTtl: 7 * 24 * 3600 });
-        alerts++;
-      }
-    } catch {
-      // leave marker unset so the next sweep retries
+    // v2 errors are emailed immediately; the sweep is the safety net if that email failed.
+    if (log.run_id) { budget.ops++; if (await env.LICENSES.get(`install-alert-now:${lic}:${log.run_id}`)) continue; }
+    const marker = `install-alert:${lic}:${lastError.ts}`;
+    budget.ops++;
+    if (await env.LICENSES.get(marker)) continue;
+    const subject = `Blueprint OS install failed: ${log.support_code ?? lic} (${log.step_title ?? log.step ?? "unknown step"})`;
+    const text = buildInstallAlertText(log, lic) + `\n\nSuggested move: email the customer their booking link before they email you.`;
+    budget.ops += 2;
+    if ((await mayEmail()) && (await sendInstallAlert(env, subject, text))) {
+      await env.LICENSES.put(marker, "1", { expirationTtl: 7 * 24 * 3600 });
+      alerts++; sent++;
     }
   }
-  return { checked: byKey.size, alerts };
+  return { checked: byKey.size, alerts, truncated };
 }
 
 async function handleAdminInstallLogs(req: Request, env: Env): Promise<Response> {
@@ -257,14 +470,34 @@ async function handleAdminInstallLogs(req: Request, env: Env): Promise<Response>
   const url = new URL(req.url);
   const filterKey = url.searchParams.get("key");
   const prefix = filterKey ? `install-log:${filterKey}:` : "install-log:";
-  const list = await env.LICENSES.list({ prefix, limit: 500 });
+  // Key order is by license, not by time, so a plain list()+limit hides recent
+  // entries once volume grows. List every key (paginated), newest first, then
+  // load until we have 500 entries or hit the per-request read budget.
+  const names = (await listAllKeys(env, prefix)).filter((n) => Number.isFinite(keyTs(n))).sort((a, b) => keyTs(b) - keyTs(a));
   const logs: InstallLog[] = [];
-  for (const k of list.keys) {
-    const entry = await env.LICENSES.get<InstallLog>(k.name, "json");
-    if (entry) logs.push(entry);
+  let reads = 0;
+  let counted = 0;
+  for (let i = 0; i < names.length && counted < 500 && reads < 900; i += 50) {
+    const chunk = names.slice(i, i + 50);
+    reads += chunk.length;
+    for (const entry of await Promise.all(chunk.map((n) => env.LICENSES.get<InstallLog>(n, "json")))) if (entry) { logs.push(entry); if (entry.status !== "progress") counted++; }
   }
   logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  return json(req, { ok: true, count: logs.length, logs });
+  // Progress is chatty: keep only the newest progress per license, and only while
+  // nothing newer (success/error) exists for it, so the page shows "in progress" runs.
+  const newestFinal = new Map<string, number>();
+  for (const l of logs) if (l.status === "success" || l.status === "error") {
+    const t = new Date(l.timestamp).getTime();
+    if (!newestFinal.has(l.license_key) || newestFinal.get(l.license_key)! < t) newestFinal.set(l.license_key, t);
+  }
+  const seenProgress = new Set<string>();
+  const out = logs.filter((l) => {
+    if (l.status !== "progress") return true;
+    if (seenProgress.has(l.license_key)) return false;
+    seenProgress.add(l.license_key);
+    return !(newestFinal.get(l.license_key)! >= new Date(l.timestamp).getTime());
+  }).slice(0, 500);
+  return json(req, { ok: true, count: out.length, logs: out });
 }
 
 // IssueRequest is the shape of the admin POST /issue JSON body.
@@ -426,14 +659,14 @@ async function handleValidate(req: Request, url: URL, env: Env, bumpLastSeen: bo
 async function resolveInstallLicense(
   env: Env,
   keyRaw: string | null,
-): Promise<{ ok: true; key: string; customer: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; key: string; customer: string; installer: InstallerKind } | { ok: false; reason: string }> {
   const key = (keyRaw || "").trim().toUpperCase();
   if (!key) return { ok: false, reason: "This link is missing its license key." };
   const record = await env.LICENSES.get<LicenseRecord>(key, "json");
   if (!record) return { ok: false, reason: "We could not find a license for this link. Check that the full link from your welcome email was used." };
   if (record.cancelled_at) return { ok: false, reason: "This license has been revoked." };
   if (isExpired(record)) return { ok: false, reason: "This license has expired." };
-  return { ok: true, key, customer: record.customer };
+  return { ok: true, key, customer: record.customer, installer: record.installer === "v2" || record.installer === "legacy" ? record.installer : env.DEFAULT_INSTALLER === "v2" ? "v2" : "legacy" };
 }
 
 async function handleInstallPage(req: Request, url: URL, env: Env): Promise<Response> {
@@ -451,11 +684,23 @@ async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Re
   const os = (url.searchParams.get("os") || "").toLowerCase();
   if (os !== "mac" && os !== "windows") return json(req, { error: "os must be 'mac' or 'windows'" }, 400);
   const info = { key: res.key, customer: res.customer };
+  // Hand the starters this Worker's origin only when it is https; otherwise
+  // (e.g. local dev) omit it and the starters use their built-in default.
+  const v2 = url.protocol === "https:" ? { licenseServer: url.origin } : {};
+  if (res.installer === "v2" && !v2.licenseServer) console.warn(`install-script: non-https origin ${url.origin}; v2 file omits SHOPOS_LICENSE_SERVER`);
+  let mac: string, win: string;
+  try {
+    mac = os === "mac" ? buildMacCommand(info, res.installer, v2) : "";
+    win = os === "windows" ? buildWindowsBat(info, res.installer, v2) : "";
+  } catch (e) {
+    console.warn(`install-script: v2 refused for ${res.key.slice(0, 4)}...${res.key.slice(-4)}: ${e instanceof Error ? e.message : e}`);
+    return json(req, { error: "this license cannot be served by the v2 installer" }, 400);
+  }
   await logFunnelEvent(env, res.key, "download", os);
   if (os === "mac") {
     // Zip so the .command keeps its execute bit — a bare download has none
     // and macOS refuses to run it ("appropriate access privileges").
-    const zip = buildZipWithExecutable("Install Blueprint OS.command", buildMacCommand(info));
+    const zip = buildZipWithExecutable("Install Blueprint OS.command", mac);
     return new Response(zip, {
       status: 200,
       headers: {
@@ -466,7 +711,7 @@ async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Re
       },
     });
   }
-  return new Response(buildWindowsBat(info), {
+  return new Response(win, {
     status: 200,
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
@@ -526,6 +771,20 @@ async function handleUpdateLicense(req: Request, url: URL, env: Env): Promise<Re
   const updated = await updateLicenseFlags(env.LICENSES, key, patch);
   if (!updated) return json(req, { error: "not found" }, 404);
   return json(req, { ok: true, license: updated });
+}
+
+async function handleSetInstaller(req: Request, url: URL, env: Env): Promise<Response> {
+  const adminCheck = await requireAdmin(req, env);
+  if (adminCheck) return adminCheck;
+  const key = (url.searchParams.get("key") || "").trim().toUpperCase();
+  const installer = url.searchParams.get("installer");
+  if (!key) return json(req, { error: "missing key" }, 400);
+  if (installer !== "legacy" && installer !== "v2") return json(req, { error: "installer must be 'legacy' or 'v2'" }, 400);
+  const record = await env.LICENSES.get<LicenseRecord>(key, "json");
+  if (!record) return json(req, { error: "not found" }, 404);
+  record.installer = installer;
+  await env.LICENSES.put(key, JSON.stringify(record));
+  return json(req, { ok: true, key, installer });
 }
 
 async function handleRevoke(req: Request, url: URL, env: Env): Promise<Response> {
@@ -660,7 +919,7 @@ export default {
     ctx.waitUntil(sweepFailedInstalls(env));
   },
 
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname;
     const method = req.method;
@@ -821,6 +1080,7 @@ export default {
       if (path === "/validate" && method === "GET") return handleValidate(req, url, env, false);
       if (path === "/refresh" && method === "GET") return handleValidate(req, url, env, true);
       if (path === "/issue" && method === "POST") return handleIssue(req, env);
+      if (path === "/admin/set-installer" && method === "POST") return handleSetInstaller(req, url, env);
       if (path === "/revoke" && method === "POST") return handleRevoke(req, url, env);
       if (path === "/delete" && method === "POST") return handleDelete(req, url, env);
       if (path === "/delete-bulk" && method === "POST") return handleDeleteBulk(req, env);
@@ -1071,7 +1331,7 @@ export default {
 
       // Installer telemetry — public write, admin read
       if (method === "POST" && path === "/install-log") {
-        return handleInstallLog(req, env);
+        return handleInstallLog(req, env, ctx);
       }
       if (method === "GET" && path === "/admin/install-logs") {
         return handleAdminInstallLogs(req, env);

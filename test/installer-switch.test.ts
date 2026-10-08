@@ -8,7 +8,7 @@ const INFO = { key: "SHOP-AB12-CD34-EF56", customer: "Acme" };
 describe("v2 install files", () => {
   it("windows v2: no admin relaunch, fetches the dashboard repo's starter, key in env, BOM write, -File", () => {
     const bat = buildWindowsBat(INFO, "v2");
-    expect(bat).toContain("raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/main/installer/start-windows.ps1");
+    expect(bat).toContain(`raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/${V2_INSTALLER_REF}/installer/start-windows.ps1`);
     expect(bat).not.toContain("net session");
     expect(bat).not.toContain("RunAs");
     expect(bat).toContain(`set "SHOPOS_LICENSE_KEY=${INFO.key}"`);
@@ -20,7 +20,7 @@ describe("v2 install files", () => {
   it("mac v2: exports the key, fetches start-macos.sh from the dashboard repo, keeps the window open", () => {
     const cmd = buildMacCommand(INFO, "v2");
     expect(cmd).toContain(`export SHOPOS_LICENSE_KEY="${INFO.key}"`);
-    expect(cmd).toContain("raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/main/installer/start-macos.sh");
+    expect(cmd).toContain(`raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/${V2_INSTALLER_REF}/installer/start-macos.sh`);
     expect(cmd).toMatch(/read -r -p/);
   });
   it("legacy stays exactly as before (default argument)", () => {
@@ -49,7 +49,7 @@ describe("per-customer switch", () => {
     expect(await script(makeEnv(rec).env)).toContain("shop-os-installer");
   });
   it("serves v2 for a flagged customer only", async () => {
-    expect(await script(makeEnv({ ...rec, installer: "v2" }).env)).toContain("shop-os-dashboard/main/installer/start-windows.ps1");
+    expect(await script(makeEnv({ ...rec, installer: "v2" }).env)).toContain(`shop-os-dashboard/${V2_INSTALLER_REF}/installer/start-windows.ps1`);
   });
   it("honours DEFAULT_INSTALLER when the record has no flag", async () => {
     expect(await script(makeEnv(rec, { DEFAULT_INSTALLER: "v2" } as any).env)).toContain("start-windows.ps1");
@@ -139,14 +139,14 @@ describe("set-installer edge cases", () => {
 
 describe("v2 pinning", () => {
   const SHA = "0123456789abcdef0123456789abcdef01234567";
-  it("default ref is main and V2_RAW_BASE is derived from the constant", () => {
-    expect(V2_INSTALLER_REF).toBe("main");
+  it("production ref is a pinned 40-hex commit SHA (never a moving branch) and V2_RAW_BASE is derived from it", () => {
+    expect(V2_INSTALLER_REF).toMatch(/^[0-9a-f]{40}$/);
     expect(V2_RAW_BASE).toBe(`https://raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/${V2_INSTALLER_REF}/installer`);
   });
-  it("both v2 files set SHOPOS_INSTALLER_REF (default main)", () => {
+  it("both v2 files set SHOPOS_INSTALLER_REF to the pinned ref", () => {
     const bat = buildWindowsBat(INFO, "v2");
-    expect(bat).toContain('\r\nset "SHOPOS_INSTALLER_REF=main"\r\n');
-    expect(buildMacCommand(INFO, "v2")).toContain('export SHOPOS_INSTALLER_REF="main"\n');
+    expect(bat).toContain(`\r\nset "SHOPOS_INSTALLER_REF=${V2_INSTALLER_REF}"\r\n`);
+    expect(buildMacCommand(INFO, "v2")).toContain(`export SHOPOS_INSTALLER_REF="${V2_INSTALLER_REF}"\n`);
   });
   it("an override ref pins the env var and the starter URLs", () => {
     const bat = buildWindowsBat(INFO, "v2", { installerRef: SHA });

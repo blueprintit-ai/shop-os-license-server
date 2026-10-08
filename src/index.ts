@@ -651,7 +651,7 @@ async function resolveInstallLicense(
   if (!record) return { ok: false, reason: "We could not find a license for this link. Check that the full link from your welcome email was used." };
   if (record.cancelled_at) return { ok: false, reason: "This license has been revoked." };
   if (isExpired(record)) return { ok: false, reason: "This license has expired." };
-  return { ok: true, key, customer: record.customer, installer: record.installer ?? (env.DEFAULT_INSTALLER === "v2" ? "v2" : "legacy") };
+  return { ok: true, key, customer: record.customer, installer: record.installer === "v2" || record.installer === "legacy" ? record.installer : env.DEFAULT_INSTALLER === "v2" ? "v2" : "legacy" };
 }
 
 async function handleInstallPage(req: Request, url: URL, env: Env): Promise<Response> {
@@ -669,12 +669,16 @@ async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Re
   const os = (url.searchParams.get("os") || "").toLowerCase();
   if (os !== "mac" && os !== "windows") return json(req, { error: "os must be 'mac' or 'windows'" }, 400);
   const info = { key: res.key, customer: res.customer };
-  const v2 = { licenseServer: url.origin };
+  // Hand the starters this Worker's origin only when it is https; otherwise
+  // (e.g. local dev) omit it and the starters use their built-in default.
+  const v2 = url.protocol === "https:" ? { licenseServer: url.origin } : {};
+  if (res.installer === "v2" && !v2.licenseServer) console.warn(`install-script: non-https origin ${url.origin}; v2 file omits SHOPOS_LICENSE_SERVER`);
   let mac: string, win: string;
   try {
     mac = os === "mac" ? buildMacCommand(info, res.installer, v2) : "";
     win = os === "windows" ? buildWindowsBat(info, res.installer, v2) : "";
-  } catch {
+  } catch (e) {
+    console.warn(`install-script: v2 refused for ${res.key}: ${e instanceof Error ? e.message : e}`);
     return json(req, { error: "this license cannot be served by the v2 installer" }, 400);
   }
   await logFunnelEvent(env, res.key, "download", os);

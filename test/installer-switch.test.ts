@@ -67,7 +67,7 @@ describe("per-customer switch", () => {
   });
   it("rejects non-admins and bad values", async () => {
     const { env } = makeEnv(rec);
-    expect((await worker.fetch(new Request(`https://x/admin/set-installer?key=${INFO.key}&installer=v2`, { method: "POST" }), env)).status).toBeGreaterThanOrEqual(401);
+    expect((await worker.fetch(new Request(`https://x/admin/set-installer?key=${INFO.key}&installer=v2`, { method: "POST" }), env)).status).toBe(401);
     expect((await worker.fetch(new Request(`https://x/admin/set-installer?key=${INFO.key}&installer=bogus`, { method: "POST", headers: { Authorization: "Bearer tok" } }), env)).status).toBe(400);
   });
 });
@@ -108,7 +108,7 @@ describe("set-installer edge cases", () => {
   });
   it("GET is not a route", async () => {
     const r = await worker.fetch(new Request(`https://x/admin/set-installer?key=${INFO.key}&installer=v2`, { headers: { Authorization: "Bearer tok" } }), makeEnv(rec).env);
-    expect(r.status).toBeGreaterThanOrEqual(400);
+    expect(r.status).toBe(404);
   });
   it("a bad value does not modify the record", async () => {
     const { env, store } = makeEnv(rec);
@@ -119,7 +119,11 @@ describe("set-installer edge cases", () => {
     const r = await worker.fetch(new Request(`https://lic.test/install-script?key=${INFO.key}&os=mac`), makeEnv({ ...rec, installer: "v2" }).env);
     const txt = new TextDecoder().decode(new Uint8Array(await r.arrayBuffer()));
     expect(txt).toContain("start-macos.sh");
-    expect(txt).toContain("SHOPOS_LICENSE_SERVER");
+    expect(txt).toContain('export SHOPOS_LICENSE_SERVER="https://lic.test"');
+    expect(txt).toContain('read -r -p "Press Enter to close..." _ < /dev/tty');
+    expect(txt).toContain("exit $rc");
+    expect(txt).toContain("--connect-timeout 20 -m 120");
+    expect(txt).toContain("Right-click");
   });
   it("windows v2 script carries the request origin as SHOPOS_LICENSE_SERVER", async () => {
     const r = await worker.fetch(new Request(`https://lic.test/install-script?key=${INFO.key}&os=windows`), makeEnv({ ...rec, installer: "v2" }).env);
@@ -130,5 +134,28 @@ describe("set-installer edge cases", () => {
       const r = await worker.fetch(new Request(`https://x/install?key=${INFO.key}`), makeEnv({ ...rec, installer }).env);
       expect(r.status).toBe(200);
     }
+  });
+});
+
+describe("fix round 1", () => {
+  it("v2 .bat never embeds the temp path in a quoted PowerShell string (O'Brien-safe)", () => {
+    const bat = buildWindowsBat(INFO, "v2");
+    expect(bat).not.toContain("'%SHOPOS_SETUP_PS1%'");
+    expect(bat).not.toMatch(/'[^'\r\n]*%[A-Z_]+%[^'\r\n]*'/);
+    expect(bat).toContain("WriteAllText($env:SHOPOS_SETUP_PS1,");
+  });
+  it("v2 .bat enables TLS 1.2 before downloading", () => {
+    expect(buildWindowsBat(INFO, "v2")).toContain("[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072;");
+  });
+  it("malformed stored flag falls back to legacy / the default", async () => {
+    expect(await script(makeEnv({ ...rec, installer: "V2; rm" }).env)).toContain("shop-os-installer");
+    expect(await script(makeEnv({ ...rec, installer: 7 }, { DEFAULT_INSTALLER: "v2" } as any).env)).toContain("start-windows.ps1");
+  });
+  it("non-https origin: v2 served without SHOPOS_LICENSE_SERVER (starter default applies)", async () => {
+    const r = await worker.fetch(new Request(`http://localhost:8787/install-script?key=${INFO.key}&os=windows`), makeEnv({ ...rec, installer: "v2" }).env);
+    expect(r.status).toBe(200);
+    const t = await r.text();
+    expect(t).toContain("start-windows.ps1");
+    expect(t).not.toContain("SHOPOS_LICENSE_SERVER");
   });
 });

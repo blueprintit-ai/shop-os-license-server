@@ -1,7 +1,7 @@
 // test/installer-switch.test.ts
 import { describe, it, expect } from "vitest";
 import worker, { Env } from "../src/index";
-import { buildWindowsBat, buildMacCommand, V2_RAW_BASE } from "../src/install-page";
+import { buildWindowsBat, buildMacCommand, V2_RAW_BASE, V2_INSTALLER_REF } from "../src/install-page";
 
 const INFO = { key: "SHOP-AB12-CD34-EF56", customer: "Acme" };
 
@@ -134,6 +134,37 @@ describe("set-installer edge cases", () => {
       const r = await worker.fetch(new Request(`https://x/install?key=${INFO.key}`), makeEnv({ ...rec, installer }).env);
       expect(r.status).toBe(200);
     }
+  });
+});
+
+describe("v2 pinning", () => {
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  it("default ref is main and V2_RAW_BASE is derived from the constant", () => {
+    expect(V2_INSTALLER_REF).toBe("main");
+    expect(V2_RAW_BASE).toBe(`https://raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/${V2_INSTALLER_REF}/installer`);
+  });
+  it("both v2 files set SHOPOS_INSTALLER_REF (default main)", () => {
+    const bat = buildWindowsBat(INFO, "v2");
+    expect(bat).toContain('\r\nset "SHOPOS_INSTALLER_REF=main"\r\n');
+    expect(buildMacCommand(INFO, "v2")).toContain('export SHOPOS_INSTALLER_REF="main"\n');
+  });
+  it("an override ref pins the env var and the starter URLs", () => {
+    const bat = buildWindowsBat(INFO, "v2", { installerRef: SHA });
+    expect(bat).toContain(`set "SHOPOS_INSTALLER_REF=${SHA}"`);
+    expect(bat).toContain(`shop-os-dashboard/${SHA}/installer/start-windows.ps1`);
+    const cmd = buildMacCommand(INFO, "v2", { installerRef: "v1.2.3" });
+    expect(cmd).toContain('export SHOPOS_INSTALLER_REF="v1.2.3"');
+    expect(cmd).toContain("shop-os-dashboard/v1.2.3/installer/start-macos.sh");
+  });
+  it("an invalid ref is refused by both builders", () => {
+    for (const bad of ['main"&calc', "a b", "", "x".repeat(65), "a;b", "$(x)"]) {
+      expect(() => buildWindowsBat(INFO, "v2", { installerRef: bad })).toThrow();
+      expect(() => buildMacCommand(INFO, "v2", { installerRef: bad })).toThrow();
+    }
+  });
+  it("legacy output carries no ref", () => {
+    expect(buildWindowsBat(INFO)).not.toContain("SHOPOS_INSTALLER_REF");
+    expect(buildMacCommand(INFO)).not.toContain("SHOPOS_INSTALLER_REF");
   });
 });
 

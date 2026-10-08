@@ -18,6 +18,24 @@
 // once it reaches parity with this flow.
 const RAW_BASE = "https://raw.githubusercontent.com/blueprintit-ai/shop-os-installer/main/scripts";
 
+export type InstallerKind = "legacy" | "v2";
+
+// v2 = the dashboard repo's no-admin starter (shop-os-dashboard/installer/
+// start-windows.ps1 and start-macos.sh). Served ONLY to customers whose
+// license record is flagged installer:"v2" (or when the DEFAULT_INSTALLER var
+// is "v2"); everyone else keeps the legacy flow above. This is the single
+// place to repoint the v2 starters (e.g. a tag or a different repo).
+// There is deliberately NO automatic fallback to legacy: if these files are
+// not reachable, the v2 .bat/.command show "Could not download the Blueprint
+// OS setup script" and exit; to roll a customer back, POST
+// /admin/set-installer?key=...&installer=legacy.
+export const V2_RAW_BASE = "https://raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/main/installer";
+
+export interface V2Options {
+  // Origin of this Worker, passed to the starters as SHOPOS_LICENSE_SERVER.
+  licenseServer?: string;
+}
+
 export interface InstallLicenseInfo {
   key: string;
   customer: string;
@@ -30,7 +48,8 @@ function commentSafe(s: string): string {
   return s.replace(/[\x00-\x1f\x7f]+/g, " ").trim();
 }
 
-export function buildWindowsBat(info: InstallLicenseInfo): string {
+export function buildWindowsBat(info: InstallLicenseInfo, installer: InstallerKind = "legacy", opts: V2Options = {}): string {
+  if (installer === "v2") return buildWindowsBatV2(info, opts);
   // CRLF line endings: cmd.exe misparses bare-LF batch files in some paths.
   //
   // Deliberately NOT an `irm URL | iex` one-liner: that "IEX cradle" shape
@@ -95,7 +114,8 @@ export function buildWindowsBat(info: InstallLicenseInfo): string {
   return lines.join("\r\n");
 }
 
-export function buildMacCommand(info: InstallLicenseInfo): string {
+export function buildMacCommand(info: InstallLicenseInfo, installer: InstallerKind = "legacy", opts: V2Options = {}): string {
+  if (installer === "v2") return buildMacCommandV2(info, opts);
   return `#!/bin/bash
 # ==============================================
 #  Blueprint OS Foundation - Self Installer (Mac)
@@ -130,6 +150,73 @@ if [ "$rc" -ne 0 ]; then
   exit "$rc"
 fi
 echo "You can close this window."
+`;
+}
+
+// v2 interpolates the key and server into batch/bash assignments, so refuse
+// anything outside a conservative alphabet instead of trying to escape it.
+function assertV2Safe(info: InstallLicenseInfo, opts: V2Options): void {
+  if (!/^[A-Za-z0-9-]{1,64}$/.test(info.key)) throw new Error("unsafe license key for v2 installer");
+  if (opts.licenseServer !== undefined && !/^https:\/\/[A-Za-z0-9.-]+(:\d+)?$/.test(opts.licenseServer)) {
+    throw new Error("unsafe license server for v2 installer");
+  }
+}
+
+function buildWindowsBatV2(info: InstallLicenseInfo, opts: V2Options): string {
+  assertV2Safe(info, opts);
+  // No admin relaunch: v2 installs per-user. Same download-to-file + BOM + -File pattern as legacy (no iex cradle).
+  const lines = [
+    "@echo off",
+    ":: ==============================================",
+    "::  Blueprint OS Setup (Windows)",
+    `::  Licensed to: ${commentSafe(info.customer)}`,
+    ":: ==============================================",
+    ':: The first time you open this file, Windows may show a blue "Windows protected your PC"',
+    ':: screen. Click "More info" then "Run anyway". That prompt appears once.',
+    "",
+    `set "SHOPOS_LICENSE_KEY=${info.key}"`,
+    ...(opts.licenseServer ? [`set "SHOPOS_LICENSE_SERVER=${opts.licenseServer}"`] : []),
+    'set "SHOPOS_SETUP_PS1=%TEMP%\\blueprint-os-start-%RANDOM%.ps1"',
+    "",
+    "echo Starting Blueprint OS setup. Keep this window open.",
+    `powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = Invoke-RestMethod -Uri '${V2_RAW_BASE}/start-windows.ps1' -UseBasicParsing; [System.IO.File]::WriteAllText('%SHOPOS_SETUP_PS1%', $c, (New-Object System.Text.UTF8Encoding($true)))"`,
+    'if not exist "%SHOPOS_SETUP_PS1%" (',
+    "  echo Could not download the Blueprint OS setup script. Check your internet connection and try again.",
+    "  pause",
+    "  exit /b 1",
+    ")",
+    "",
+    'powershell -NoProfile -ExecutionPolicy Bypass -File "%SHOPOS_SETUP_PS1%"',
+    'set "SHOPOS_EXIT=%errorLevel%"',
+    'del "%SHOPOS_SETUP_PS1%" >nul 2>&1',
+    "pause",
+    "exit /b %SHOPOS_EXIT%",
+    "",
+  ];
+  return lines.join("\r\n");
+}
+
+function buildMacCommandV2(info: InstallLicenseInfo, opts: V2Options): string {
+  assertV2Safe(info, opts);
+  const server = opts.licenseServer ? `export SHOPOS_LICENSE_SERVER="${opts.licenseServer}"\n` : "";
+  return `#!/bin/bash
+# ==============================================
+#  Blueprint OS Setup (macOS)
+#  Licensed to: ${commentSafe(info.customer)}
+# ==============================================
+export SHOPOS_LICENSE_KEY="${info.key}"
+${server}echo "Starting Blueprint OS setup. Keep this window open."
+F="$(mktemp)"
+if ! curl -fsSL ${V2_RAW_BASE}/start-macos.sh -o "$F"; then
+  echo "Could not download the Blueprint OS setup script. Check your internet connection and try again."
+  read -r -p "Press Enter to close..." _ < /dev/tty
+  exit 1
+fi
+bash "$F"
+rc=$?
+rm -f "$F"
+read -r -p "Press Enter to close..." _ < /dev/tty
+exit $rc
 `;
 }
 

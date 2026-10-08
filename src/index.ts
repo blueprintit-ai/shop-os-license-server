@@ -7,6 +7,7 @@
  *   GET  /validate?key=...       -> validate a license key (public)
  *   GET  /refresh?key=...        -> re-validate, bump last_seen (public, used by skills periodically)
  *   POST /issue                  -> issue a new license key (admin: requires bearer ADMIN_TOKEN)
+ *   POST /admin/set-installer?key=...&installer=legacy|v2 -> choose which installer a customer's /install link serves (admin)
  *   POST /revoke?key=...         -> soft revoke (sets cancelled_at; record preserved) (admin)
  *   POST /delete?key=...         -> hard delete (wipes KV record + cached PDF) (admin)
  *   POST /delete-bulk            -> hard delete an array of keys (admin, max 200/call)
@@ -32,11 +33,14 @@ import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
 import { handlePayPalWebhook } from "./handlers/paypal-webhook.js";
 import { handlePaymentSuccess, renderWelcomePdfBytes, sendWelcomeEmailForLicense } from "./handlers/payment-success.js";
 import { welcomeHtml, welcomeText } from "./email/welcome-template.js";
-import { buildInstallPage, buildInvalidKeyPage, buildMacCommand, buildWindowsBat, buildZipWithExecutable } from "./install-page.js";
+import { type InstallerKind, buildInstallPage, buildInvalidKeyPage, buildMacCommand, buildWindowsBat, buildZipWithExecutable } from "./install-page.js";
 
 export interface Env {
   LICENSES: KVNamespace;
   ADMIN_TOKEN: string;
+  // "v2" makes records without an installer flag get the v2 installer.
+  // Unset (the default, and not in wrangler.toml) means legacy.
+  DEFAULT_INSTALLER?: string;
   SERVICE_NAME: string;
   SERVICE_VERSION: string;
 
@@ -640,14 +644,14 @@ async function handleValidate(req: Request, url: URL, env: Env, bumpLastSeen: bo
 async function resolveInstallLicense(
   env: Env,
   keyRaw: string | null,
-): Promise<{ ok: true; key: string; customer: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; key: string; customer: string; installer: InstallerKind } | { ok: false; reason: string }> {
   const key = (keyRaw || "").trim().toUpperCase();
   if (!key) return { ok: false, reason: "This link is missing its license key." };
   const record = await env.LICENSES.get<LicenseRecord>(key, "json");
   if (!record) return { ok: false, reason: "We could not find a license for this link. Check that the full link from your welcome email was used." };
   if (record.cancelled_at) return { ok: false, reason: "This license has been revoked." };
   if (isExpired(record)) return { ok: false, reason: "This license has expired." };
-  return { ok: true, key, customer: record.customer };
+  return { ok: true, key, customer: record.customer, installer: record.installer ?? (env.DEFAULT_INSTALLER === "v2" ? "v2" : "legacy") };
 }
 
 async function handleInstallPage(req: Request, url: URL, env: Env): Promise<Response> {
@@ -665,11 +669,19 @@ async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Re
   const os = (url.searchParams.get("os") || "").toLowerCase();
   if (os !== "mac" && os !== "windows") return json(req, { error: "os must be 'mac' or 'windows'" }, 400);
   const info = { key: res.key, customer: res.customer };
+  const v2 = { licenseServer: url.origin };
+  let mac: string, win: string;
+  try {
+    mac = os === "mac" ? buildMacCommand(info, res.installer, v2) : "";
+    win = os === "windows" ? buildWindowsBat(info, res.installer, v2) : "";
+  } catch {
+    return json(req, { error: "this license cannot be served by the v2 installer" }, 400);
+  }
   await logFunnelEvent(env, res.key, "download", os);
   if (os === "mac") {
     // Zip so the .command keeps its execute bit — a bare download has none
     // and macOS refuses to run it ("appropriate access privileges").
-    const zip = buildZipWithExecutable("Install Blueprint OS.command", buildMacCommand(info));
+    const zip = buildZipWithExecutable("Install Blueprint OS.command", mac);
     return new Response(zip, {
       status: 200,
       headers: {
@@ -680,7 +692,7 @@ async function handleInstallScript(req: Request, url: URL, env: Env): Promise<Re
       },
     });
   }
-  return new Response(buildWindowsBat(info), {
+  return new Response(win, {
     status: 200,
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
@@ -740,6 +752,20 @@ async function handleUpdateLicense(req: Request, url: URL, env: Env): Promise<Re
   const updated = await updateLicenseFlags(env.LICENSES, key, patch);
   if (!updated) return json(req, { error: "not found" }, 404);
   return json(req, { ok: true, license: updated });
+}
+
+async function handleSetInstaller(req: Request, url: URL, env: Env): Promise<Response> {
+  const adminCheck = await requireAdmin(req, env);
+  if (adminCheck) return adminCheck;
+  const key = (url.searchParams.get("key") || "").trim().toUpperCase();
+  const installer = url.searchParams.get("installer");
+  if (!key) return json(req, { error: "missing key" }, 400);
+  if (installer !== "legacy" && installer !== "v2") return json(req, { error: "installer must be 'legacy' or 'v2'" }, 400);
+  const record = await env.LICENSES.get<LicenseRecord>(key, "json");
+  if (!record) return json(req, { error: "not found" }, 404);
+  record.installer = installer;
+  await env.LICENSES.put(key, JSON.stringify(record));
+  return json(req, { ok: true, key, installer });
 }
 
 async function handleRevoke(req: Request, url: URL, env: Env): Promise<Response> {
@@ -1035,6 +1061,7 @@ export default {
       if (path === "/validate" && method === "GET") return handleValidate(req, url, env, false);
       if (path === "/refresh" && method === "GET") return handleValidate(req, url, env, true);
       if (path === "/issue" && method === "POST") return handleIssue(req, env);
+      if (path === "/admin/set-installer" && method === "POST") return handleSetInstaller(req, url, env);
       if (path === "/revoke" && method === "POST") return handleRevoke(req, url, env);
       if (path === "/delete" && method === "POST") return handleDelete(req, url, env);
       if (path === "/delete-bulk" && method === "POST") return handleDeleteBulk(req, env);

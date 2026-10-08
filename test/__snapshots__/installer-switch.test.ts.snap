@@ -1,0 +1,82 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`legacy regression snapshot > legacy .bat is byte-for-byte unchanged 1`] = `
+"@echo off
+:: ==============================================
+::  Blueprint OS Foundation - Self Installer (Windows)
+::  Licensed to: Acme
+:: ==============================================
+:: The first time you open this file, Windows may show a blue
+:: "Windows protected your PC" screen. Click "More info" then
+:: "Run anyway". That prompt appears once.
+
+:: Relaunch as administrator if we are not already.
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+  echo Blueprint OS setup needs administrator access. Click Yes on the next prompt.
+  powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  if %errorLevel% neq 0 (
+    echo.
+    echo Setup was not given administrator access, so it could not start.
+    echo Double-click this file again and click Yes on the prompt.
+    pause
+  )
+  exit /b
+)
+
+set "SHOPOS_LICENSE_KEY=SHOP-AB12-CD34-EF56"
+set "SHOPOS_SETUP_PS1=%TEMP%\\shop-os-setup-%RANDOM%.ps1"
+
+echo Starting Blueprint OS setup. Keep this window open.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/blueprintit-ai/shop-os-installer/main/scripts/setup-windows.ps1' -UseBasicParsing; [System.IO.File]::WriteAllText('%SHOPOS_SETUP_PS1%', $c, (New-Object System.Text.UTF8Encoding($true)))"
+if not exist "%SHOPOS_SETUP_PS1%" (
+  echo Could not download the Blueprint OS setup script. Check your internet connection and try again.
+  pause
+  exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SHOPOS_SETUP_PS1%"
+set "SHOPOS_EXIT=%errorLevel%"
+del "%SHOPOS_SETUP_PS1%" >nul 2>&1
+pause
+exit /b %SHOPOS_EXIT%
+"
+`;
+
+exports[`legacy regression snapshot > legacy .command is byte-for-byte unchanged 1`] = `
+"#!/bin/bash
+# ==============================================
+#  Blueprint OS Foundation - Self Installer (Mac)
+#  Licensed to: Acme
+# ==============================================
+# The first time you open this file, macOS may say it "cannot be opened
+# because it is from an unidentified developer". That is normal:
+#   1. Right-click (or Control-click) this file
+#   2. Choose "Open"
+#   3. Click "Open" again
+# You only have to do that once.
+
+export SHOPOS_LICENSE_KEY="SHOP-AB12-CD34-EF56"
+
+# Download first, then run. A bare \`bash -c "$(curl ...)"\` turns a failed
+# download (offline, captive portal, GitHub down) into \`bash -c ""\`, which
+# exits 0 and lands on "You can close this window" with nothing installed.
+SETUP_SCRIPT="$(curl -fsSL https://raw.githubusercontent.com/blueprintit-ai/shop-os-installer/main/scripts/setup-macos.sh)"
+if [ -z "$SETUP_SCRIPT" ]; then
+  echo ""
+  echo "Could not download the Blueprint OS setup script. Check your internet connection and try again."
+  read -p "Press Return to close this window" < /dev/tty
+  exit 1
+fi
+/bin/bash -c "$SETUP_SCRIPT"
+rc=$?
+echo ""
+if [ "$rc" -ne 0 ]; then
+  echo "Setup did not finish (exit code $rc). Scroll up for the reason, fix it, and run this installer again."
+  echo "If it keeps failing, send a screenshot of this window to your Blueprint IT contact."
+  read -p "Press Return to close this window" < /dev/tty
+  exit "$rc"
+fi
+echo "You can close this window."
+"
+`;

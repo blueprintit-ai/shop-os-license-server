@@ -111,6 +111,7 @@ interface InstallLog {
   hint?: string;
   duration_ms?: number;
   installer_version?: string;
+  truncated?: boolean;
   notes?: string[];
   timeline?: Record<string, unknown>[];
   snapshot?: Record<string, unknown>;
@@ -144,11 +145,11 @@ function cleanTimelineEntry(e: unknown): Record<string, unknown> | undefined {
 async function handleInstallLog(req: Request, env: Env): Promise<Response> {
   let body: any;
   try { body = await req.json(); } catch { return json(req, { error: "Bad JSON" }, 400); }
-  if (!isObj(body) || !body.license_key || !body.status || !["success", "error", "retry", "progress"].includes(body.status)) {
+  if (!isObj(body) || typeof body.license_key !== "string" || !body.license_key.trim() || !body.status || !["success", "error", "retry", "progress"].includes(body.status)) {
     return json(req, { error: "license_key and status are required (success | error | retry | progress)" }, 400);
   }
   const timestamp = new Date().toISOString();
-  const log: InstallLog = { license_key: String(body.license_key).slice(0, 64), timestamp, status: body.status };
+  const log: InstallLog = { license_key: body.license_key.trim().slice(0, 64), timestamp, status: body.status };
   put(log, "error_message", str(body.error_message, 4000));
   put(log, "step", str(body.step, 120));
   if (isObj(body.machine)) {
@@ -156,6 +157,7 @@ async function handleInstallLog(req: Request, env: Env): Promise<Response> {
     for (const k of ["os", "ps_version", "username", "source"]) { const v = str(body.machine[k], 120); if (v) m[k] = v; }
     log.machine = m;
   }
+  if (body.truncated === true) log.truncated = true;
   put(log, "run_id", str(body.run_id, 64));
   put(log, "support_code", str(body.support_code, 16));
   put(log, "step_title", str(body.step_title, 160));
@@ -170,7 +172,7 @@ async function handleInstallLog(req: Request, env: Env): Promise<Response> {
     if (notes.length) log.notes = notes;
   }
   if (Array.isArray(body.timeline)) {
-    log.timeline = body.timeline.slice(0, 30).map(cleanTimelineEntry).filter((e: unknown): e is Record<string, unknown> => !!e);
+    log.timeline = body.timeline.slice(0, 30).map(cleanTimelineEntry).filter((e: Record<string, unknown> | undefined): e is Record<string, unknown> => !!e && Object.keys(e).length > 0);
   }
   if (isObj(body.snapshot)) log.snapshot = body.snapshot;
 
@@ -182,7 +184,10 @@ async function handleInstallLog(req: Request, env: Env): Promise<Response> {
   if (!fits()) { log.output_tail = log.output_tail?.slice(-2000); log.error_message = log.error_message?.slice(0, 1500); }
   if (!fits()) { delete log.notes; delete log.command; }
   const stored = JSON.stringify(log);
-  await env.LICENSES.put(`install-log:${log.license_key}:${Date.now()}`, stored, { expirationTtl: 180 * 24 * 60 * 60 });
+  // Progress is chatty (~10-15 entries per run): short TTL keeps the 1000-key list windows usable.
+  const ttlDays = log.status === "progress" ? 7 : 180;
+  const rand = Math.random().toString(36).slice(2, 6).padEnd(4, "0");
+  await env.LICENSES.put(`install-log:${log.license_key}:${Date.now()}:${rand}`, stored, { expirationTtl: ttlDays * 24 * 60 * 60 });
   return json(req, { ok: true, logged_at: timestamp });
 }
 

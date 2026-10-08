@@ -133,3 +133,74 @@ describe("POST /install-log (v2 fields)", () => {
     expect(await res.json()).toEqual({ installed: false });
   });
 });
+
+describe("POST /install-log (fix round 1)", () => {
+  function envSpy() {
+    const puts: { k: string; v: string; ttl?: number }[] = [];
+    const { env } = envWithStore();
+    (env as any).LICENSES.put = async (k: string, v: string, o?: any) => { puts.push({ k, v, ttl: o?.expirationTtl }); };
+    return { env, puts };
+  }
+  const DAY = 24 * 60 * 60;
+
+  it("progress gets a 7 day TTL, success/error/retry keep 180 days", async () => {
+    const { env, puts } = envSpy();
+    for (const status of ["progress", "success", "error", "retry"]) await post(env, { license_key: KEY, status });
+    expect(puts.map((p) => p.ttl)).toEqual([7 * DAY, 180 * DAY, 180 * DAY, 180 * DAY]);
+  });
+
+  it("two writes in the same millisecond do not collide, and the key stays parseable", async () => {
+    const { env, store } = envWithStore();
+    const realNow = Date.now; Date.now = () => 1700000000000;
+    try {
+      await post(env, { license_key: KEY, status: "progress", step: "a" });
+      await post(env, { license_key: KEY, status: "progress", step: "b" });
+    } finally { Date.now = realNow; }
+    const names = Object.keys(store);
+    expect(names).toHaveLength(2);
+    for (const n of names) {
+      const parts = n.split(":");
+      expect(parts[1]).toBe(KEY);
+      expect(Number(parts[2])).toBe(1700000000000);
+      expect(parts[3]).toMatch(/^[a-z0-9]{4}$/);
+    }
+    const res = await worker.fetch(new Request(`https://x/install-status?key=${KEY}`), env);
+    expect(await res.json()).toEqual({ installed: false });
+  });
+
+  it("requires a string license_key and trims it", async () => {
+    const { env, store } = envWithStore();
+    expect((await post(env, { license_key: 123, status: "success" })).status).toBe(400);
+    expect((await post(env, { license_key: ["x"], status: "success" })).status).toBe(400);
+    expect((await post(env, { license_key: "   ", status: "success" })).status).toBe(400);
+    expect((await post(env, { license_key: `  ${KEY} `, status: "success" })).status).toBe(200);
+    expect(JSON.parse(Object.values(store)[0]).license_key).toBe(KEY);
+  });
+
+  it("byte cap holds for multibyte and control-char payloads and headline fields survive", async () => {
+    for (const ch of ["é中😀", "\u0001\u0002\n\"\\"]) {
+      const { env, store } = envWithStore();
+      await post(env, {
+        license_key: KEY, status: "error", step: "plugins", step_title: "Installing", run_id: "r1", support_code: "BP-7K2Q", hint: "h",
+        error_message: ch.repeat(3000), output_tail: ch.repeat(3000), command: ch.repeat(500),
+        notes: Array.from({ length: 10 }, () => ch.repeat(100)),
+        timeline: Array.from({ length: 30 }, () => ({ id: "s", title: ch.repeat(50), error: ch.repeat(200), outTail: ch.repeat(400) })),
+        snapshot: { big: ch.repeat(5000) },
+      });
+      const raw = Object.values(store)[0];
+      expect(new TextEncoder().encode(raw).length).toBeLessThanOrEqual(32768);
+      expect(JSON.parse(raw)).toMatchObject({ status: "error", step: "plugins", support_code: "BP-7K2Q", run_id: "r1", step_title: "Installing", hint: "h" });
+    }
+  });
+
+  it("drops empty timeline entries and keeps the boolean truncated flag", async () => {
+    const { env, store } = envWithStore();
+    await post(env, { license_key: KEY, status: "error", truncated: true, timeline: [{}, { evil: 1 }, { id: "a" }] });
+    const saved = JSON.parse(Object.values(store)[0]);
+    expect(saved.timeline).toEqual([{ id: "a" }]);
+    expect(saved.truncated).toBe(true);
+    const { env: e2, store: s2 } = envWithStore();
+    await post(e2, { license_key: KEY, status: "error", truncated: "yes" });
+    expect(JSON.parse(Object.values(s2)[0]).truncated).toBeUndefined();
+  });
+});

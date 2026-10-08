@@ -191,7 +191,7 @@ async function handleInstallLog(req: Request, env: Env): Promise<Response> {
   if (log.status === "error" && log.run_id) {
     try {
       const marker = `install-alert-now:${log.license_key}:${log.run_id}`;
-      if (!(await env.LICENSES.get(marker))) {
+      if (!(await env.LICENSES.get(marker)) && (await immediateAlertAllowed(env, log.license_key))) {
         const ok = await sendInstallAlert(env, `Blueprint OS install failed: ${log.support_code ?? log.license_key} (${log.step_title ?? log.step ?? "unknown step"})`, buildInstallAlertText(log, log.license_key));
         if (ok) await env.LICENSES.put(marker, "1", { expirationTtl: 7 * 24 * 3600 });
       }
@@ -273,7 +273,8 @@ const multiLine = (v: unknown, max = 6000): string =>
 const escHtml = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-export function buildInstallAlertText(log: InstallLog, lic: string, extra: { hungMinutes?: number } = {}): string {
+export function buildInstallAlertText(log: InstallLog, licRaw: string, extra: { hungMinutes?: number } = {}): string {
+  const lic = oneLine(licRaw, 64);
   const snap = (isObj(log.snapshot) ? log.snapshot : {}) as Record<string, unknown>;
   const title = oneLine(log.step_title), step = oneLine(log.step);
   const retried = (Array.isArray(log.timeline) ? log.timeline : []).filter((e) => isObj(e) && e.retried === true);
@@ -311,6 +312,19 @@ export function buildInstallAlertText(log: InstallLog, lic: string, extra: { hun
   return lines.join("\n");
 }
 
+// The report endpoint is unauthenticated: only email immediately for a real
+// license and under a small global hourly cap. Otherwise the sweep covers it.
+const IMMEDIATE_ALERT_HOURLY_CAP = 10;
+async function immediateAlertAllowed(env: Env, licenseKey: string): Promise<boolean> {
+  const record = await env.LICENSES.get(licenseKey.toUpperCase(), "json");
+  if (!record) return false;
+  const capKey = `install-alert-cap:${new Date().toISOString().slice(0, 13)}`;
+  const n = Number((await env.LICENSES.get(capKey)) ?? 0) || 0;
+  if (n >= IMMEDIATE_ALERT_HOURLY_CAP) return false;
+  await env.LICENSES.put(capKey, String(n + 1), { expirationTtl: 2 * 3600 });
+  return true;
+}
+
 // Sends the text as plain text plus an escaped HTML twin (clients that render
 // HTML show the stored values as literal text, never as markup).
 async function sendInstallAlert(env: Env, subject: string, text: string): Promise<boolean> {
@@ -332,10 +346,11 @@ async function sendInstallAlert(env: Env, subject: string, text: string): Promis
 }
 
 // KV list() returns at most 1000 keys per call; follow the cursor (bounded).
-async function listAllKeys(env: Env, prefix: string, maxPages = 25): Promise<string[]> {
+async function listAllKeys(env: Env, prefix: string, maxPages = 25, counter?: { ops: number }): Promise<string[]> {
   const names: string[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < maxPages; page++) {
+    if (counter) counter.ops++;
     const res = await env.LICENSES.list({ prefix, limit: 1000, ...(cursor ? { cursor } : {}) }) as { keys: { name: string }[]; list_complete?: boolean; cursor?: string };
     for (const k of res.keys) names.push(k.name);
     if (res.list_complete !== false || !res.cursor) break;
@@ -352,10 +367,14 @@ const keyTs = (name: string): number => Number(name.split(":")[2]);
 // latest report is a `progress` older than 30 min (a run that ended in
 // success/error is never hung; the launch step sends no progress report).
 // Runs on the cron trigger and via POST /admin/run-failure-sweep.
-async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts: number }> {
-  if (!env.RESEND_API_KEY) return { checked: 0, alerts: 0 };
+const SWEEP_KV_BUDGET = 800;
+async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts: number; truncated: boolean }> {
+  if (!env.RESEND_API_KEY) return { checked: 0, alerts: 0, truncated: false };
   const now = Date.now();
-  const names = await listAllKeys(env, "install-log:");
+  // Workers cap subrequests (1000); count every KV operation and stop cleanly.
+  const budget = { ops: 0 };
+  const left = () => SWEEP_KV_BUDGET - budget.ops;
+  const names = await listAllKeys(env, "install-log:", 25, budget);
   const byKey = new Map<string, { ts: number; name: string }[]>();
   for (const name of names) {
     const parts = name.split(":");
@@ -368,26 +387,36 @@ async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts:
     if (!byKey.has(lic)) byKey.set(lic, []);
     byKey.get(lic)!.push({ ts, name });
   }
+  for (const e of byKey.values()) e.sort((a, b) => a.ts - b.ts);
+  // Newest activity first so the freshest installs are served if the budget runs out.
+  const ordered = [...byKey.entries()].sort((a, b) => b[1][b[1].length - 1].ts - a[1][a[1].length - 1].ts);
   let alerts = 0;
-  for (const [lic, entries] of byKey) {
-    entries.sort((a, b) => a.ts - b.ts);
-    // Progress entries are written ~10-15 per run; load everything from the
-    // last 24h (bounded) and drop progress before applying the 20-entry window.
+  let truncated = false;
+  for (const [lic, entries] of ordered) {
+    // loads + up to 2 marker gets + 2 puts
+    if (left() < 8) { truncated = true; break; }
+    const take = Math.min(200, entries.length, left() - 6);
+    if (take < entries.length) truncated = true;
+    budget.ops += take;
+    // Progress entries are written ~10-15 per run; load the last 24h (bounded) and
+    // drop progress before applying the 20-entry window.
     const all = await Promise.all(
-      entries.slice(-200).map(async (e) => ({ ts: e.ts, log: await env.LICENSES.get<InstallLog>(e.name, "json") })),
+      entries.slice(-take).map(async (e) => ({ ts: e.ts, log: await env.LICENSES.get<InstallLog>(e.name, "json").catch(() => null) })),
     );
     const present = all.filter((l) => l.log);
-    const lastProgress = [...present].reverse().find((l) => l.log!.status === "progress");
     const loaded = present.filter((l) => l.log!.status !== "progress").slice(-20);
 
-    // Hung run: the newest install report (ignoring funnel page_view/download) is a progress.
+    // Hung run: the newest install report (ignoring funnel page_view/download) is a
+    // mid-run report (progress, or a retry from the step runner).
     const lastReport = [...present].reverse().find((l) => ["progress", "success", "error", "retry"].includes(l.log!.status));
-    if (lastReport && lastReport === lastProgress && now - lastReport.ts >= 30 * 60e3) {
+    if (lastReport && (lastReport.log!.status === "progress" || lastReport.log!.status === "retry") && now - lastReport.ts >= 30 * 60e3) {
       const marker = `install-alert-hung:${lic}:${lastReport.ts}`;
+      budget.ops++;
       if (!(await env.LICENSES.get(marker))) {
         const minutes = Math.round((now - lastReport.ts) / 60e3);
         const lg = lastReport.log!;
         const sub = `Blueprint OS install may be stuck: ${lg.support_code ?? lic} (${lg.step_title ?? lg.step ?? "unknown step"})`;
+        budget.ops += 2;
         if (await sendInstallAlert(env, sub, buildInstallAlertText(lg, lic, { hungMinutes: minutes }))) {
           await env.LICENSES.put(marker, "1", { expirationTtl: 7 * 24 * 3600 });
           alerts++;
@@ -401,17 +430,19 @@ async function sweepFailedInstalls(env: Env): Promise<{ checked: number; alerts:
     if (loaded.some((l) => l.log?.status === "success" && l.ts > lastError.ts)) continue;
     const log = lastError.log!;
     // v2 errors are emailed immediately; the sweep is the safety net if that email failed.
-    if (log.run_id && (await env.LICENSES.get(`install-alert-now:${lic}:${log.run_id}`))) continue;
+    if (log.run_id) { budget.ops++; if (await env.LICENSES.get(`install-alert-now:${lic}:${log.run_id}`)) continue; }
     const marker = `install-alert:${lic}:${lastError.ts}`;
+    budget.ops++;
     if (await env.LICENSES.get(marker)) continue;
     const subject = `Blueprint OS install failed: ${log.support_code ?? lic} (${log.step_title ?? log.step ?? "unknown step"})`;
     const text = buildInstallAlertText(log, lic) + `\n\nSuggested move: email the customer their booking link before they email you.`;
+    budget.ops += 2;
     if (await sendInstallAlert(env, subject, text)) {
       await env.LICENSES.put(marker, "1", { expirationTtl: 7 * 24 * 3600 });
       alerts++;
     }
   }
-  return { checked: byKey.size, alerts };
+  return { checked: byKey.size, alerts, truncated };
 }
 
 async function handleAdminInstallLogs(req: Request, env: Env): Promise<Response> {
@@ -426,10 +457,11 @@ async function handleAdminInstallLogs(req: Request, env: Env): Promise<Response>
   const names = (await listAllKeys(env, prefix)).filter((n) => Number.isFinite(keyTs(n))).sort((a, b) => keyTs(b) - keyTs(a));
   const logs: InstallLog[] = [];
   let reads = 0;
-  for (let i = 0; i < names.length && logs.length < 500 && reads < 900; i += 50) {
+  let counted = 0;
+  for (let i = 0; i < names.length && counted < 500 && reads < 900; i += 50) {
     const chunk = names.slice(i, i + 50);
     reads += chunk.length;
-    for (const entry of await Promise.all(chunk.map((n) => env.LICENSES.get<InstallLog>(n, "json")))) if (entry) logs.push(entry);
+    for (const entry of await Promise.all(chunk.map((n) => env.LICENSES.get<InstallLog>(n, "json")))) if (entry) { logs.push(entry); if (entry.status !== "progress") counted++; }
   }
   logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   // Progress is chatty: keep only the newest progress per license, and only while

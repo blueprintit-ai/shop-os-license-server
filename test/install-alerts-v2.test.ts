@@ -24,13 +24,14 @@ function makeEnv(pageSize = 1000) {
 }
 let sent: any[];
 beforeEach(() => { sent = []; vi.stubGlobal("fetch", async (url: string, init: any) => { if (String(url).includes("resend")) { sent.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); } throw new Error("unexpected fetch " + url); }); });
+const seed = (store: Record<string, string>, key = KEY) => { store[key] = JSON.stringify({ customer: "C", email: "c@x.com" }); };
 const post = (env: Env, body: unknown) => worker.fetch(new Request("https://x/install-log", { method: "POST", body: JSON.stringify(body) }), env);
 const sweep = (env: Env) => worker.fetch(new Request("https://x/admin/run-failure-sweep", { method: "POST", headers: { Authorization: "Bearer x" } }), env);
 const put = (store: Record<string, string>, key: string, ts: number, log: any, rand = "aaaa") => { store[`install-log:${key}:${ts}:${rand}`] = JSON.stringify({ license_key: key, timestamp: new Date(ts).toISOString(), ...log }); };
 
 describe("immediate failure alert (v2)", () => {
   it("emails once per run with support code, command, tail and hint", async () => {
-    const { env } = makeEnv();
+    const { env, store } = makeEnv(); seed(store);
     const err = { license_key: KEY, status: "error", step: "plugins", step_title: "Installing the Blueprint OS skills", run_id: "r1", support_code: "BP-7K2Q", error_message: "Could not install x", command: "claude plugin install x", exit_code: 1, output_tail: "fatal: unable to access github.com", hint: "GitHub unreachable, likely a firewall or proxy.", snapshot: { os: "Windows 11", git: false, node: "v22" } };
     await post(env, err);
     await post(env, err);
@@ -41,18 +42,18 @@ describe("immediate failure alert (v2)", () => {
     expect(sent[0].text).toContain("Windows 11");
   });
   it("does not email for old-style errors (the sweep still handles those)", async () => {
-    const { env } = makeEnv();
+    const { env, store } = makeEnv(); seed(store);
     await post(env, { license_key: KEY, status: "error", step: "x", error_message: "old" });
     expect(sent).toHaveLength(0);
   });
   it("an email failure never fails the report", async () => {
-    const { env } = makeEnv();
+    const { env, store } = makeEnv(); seed(store);
     vi.stubGlobal("fetch", async () => { throw new Error("resend down"); });
     const res = await post(env, { license_key: KEY, status: "error", step: "x", run_id: "r2", support_code: "BP-AAAA" });
     expect(res.status).toBe(200);
   });
   it("shows notes and retried steps in the alert", async () => {
-    const { env } = makeEnv();
+    const { env, store } = makeEnv(); seed(store);
     await post(env, { license_key: KEY, status: "error", step: "plugins", run_id: "r3", support_code: "BP-NOTE", notes: ["settings.json was rebuilt"], timeline: [{ id: "git", title: "Checking Git", status: "ok", attempts: 3, retried: true }, { id: "plugins", title: "Plugins", status: "error", attempts: 1 }] });
     expect(sent[0].text).toContain("settings.json was rebuilt");
     expect(sent[0].text).toMatch(/Checking Git.*retried 2 times/);
@@ -100,7 +101,8 @@ describe("hung-run sweep", () => {
     for (let i = 0; i < 40; i++) put(store, KEY, base + 60e3 + i * 1000, { status: "progress", step: "s" + i }, "q" + String(i).padStart(3, "0"));
     // a later successful retry would silence it; none here, but the last entry is progress (hung) too
     await sweep(env);
-    expect(sent.some((m) => /boom/.test(m.text))).toBe(true);
+    expect(sent).toHaveLength(2); // the error alert plus the hung alert for the trailing progress
+    expect(sent.filter((m) => m.text.includes("boom"))).toHaveLength(1);
   });
   it("paginates list() so licenses beyond the first page are swept", async () => {
     const { env, store } = makeEnv(3);
@@ -119,6 +121,64 @@ describe("hung-run sweep", () => {
     await sweep(env);
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toContain("never-sent");
+  });
+});
+
+describe("immediate alert gating", () => {
+  const err = (n: number, key = KEY) => ({ license_key: key, status: "error", step: "x", run_id: "run" + n, support_code: "BP-" + n });
+  it("unknown license: no immediate email, sweep still handles it", async () => {
+    const { env, store } = makeEnv();
+    await post(env, err(1));
+    expect(sent).toHaveLength(0);
+    expect(Object.keys(store).some((k) => k.startsWith("install-alert-now:"))).toBe(false);
+  });
+  it("caps immediate emails per UTC hour", async () => {
+    const { env, store } = makeEnv(); seed(store);
+    for (let i = 0; i < 14; i++) await post(env, err(i));
+    expect(sent).toHaveLength(10);
+  });
+  it("old no-run_id error is swept but not emailed immediately", async () => {
+    const { env, store } = makeEnv(); seed(store);
+    await post(env, { license_key: KEY, status: "error", step: "x", error_message: "legacy" });
+    expect(sent).toHaveLength(0);
+    const k = Object.keys(store).find((n) => n.startsWith("install-log:"))!;
+    const old = Date.now() - 2 * 3600e3;
+    store[`install-log:${KEY}:${old}:zzzz`] = store[k]; delete store[k];
+    await sweep(env);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toContain("legacy");
+  });
+});
+
+describe("hung detection with retry reports and budget", () => {
+  it("progress then a retry 45 min ago then nothing -> exactly one email", async () => {
+    const { env, store } = makeEnv();
+    put(store, KEY, Date.now() - 50 * 60e3, { status: "progress", step: "a", step_title: "Step A" });
+    put(store, KEY, Date.now() - 45 * 60e3, { status: "retry", step: "b", step_title: "Retrying B", support_code: "BP-RTRY" });
+    await sweep(env);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].text).toContain("Retrying B");
+    await sweep(env);
+    expect(sent).toHaveLength(1);
+  });
+  it("progress older than 24h is not alerted", async () => {
+    const { env, store } = makeEnv();
+    put(store, KEY, Date.now() - 26 * 3600e3, { status: "progress", step: "a" });
+    await sweep(env);
+    expect(sent).toHaveLength(0);
+  });
+  it("stays under the KV budget with many licenses and serves newest first", async () => {
+    const { env, store } = makeEnv(1000);
+    let ops = 0;
+    const kv = env.LICENSES as any;
+    for (const m of ["get", "put", "list"]) { const o = kv[m].bind(kv); kv[m] = async (...a: any[]) => { ops++; return o(...a); }; }
+    for (let i = 0; i < 1200; i++) put(store, `SHOP-AAAA-BBBB-${String(i).padStart(4, "0")}`, Date.now() - 31 * 60e3 - i * 1000, { status: "progress", step: "s", support_code: "BP-" + i }, "xxxx");
+    const res: any = await (await sweep(env)).json();
+    expect(ops).toBeLessThan(1000);
+    expect(res.truncated).toBe(true);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent[0].text).toContain("BP-0");
+    expect(sent.some((m) => m.text.includes("BP-1199"))).toBe(false);
   });
 });
 
@@ -163,11 +223,12 @@ describe("escaping of unauthenticated fields", () => {
     expect(html).not.toMatch(/<script/i);
     expect(html).toContain("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");
     expect(html).not.toContain("'\"");
+    expect(html).toContain("&#39;");
     expect(html).toContain("BP-EVIL");
     expect(html).toContain("retried 1 time");
   });
   it("alert text keeps content on one line where it must and the html twin is escaped", async () => {
-    const { env } = makeEnv();
+    const { env, store } = makeEnv(); seed(store);
     await post(env, { ...evil, step_title: "a\r\nBcc: evil@x.com <b>" });
     expect(sent).toHaveLength(1);
     expect(sent[0].subject).not.toMatch(/[\r\n]/);

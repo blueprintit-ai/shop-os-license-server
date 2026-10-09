@@ -33,7 +33,7 @@ export type InstallerKind = "legacy" | "v2";
 // tag, or a 40-hex commit SHA. After the dashboard PR is squash-merged, set
 // this to that commit's full SHA in a one-line follow-up BEFORE the first
 // customer is flipped to v2; verify both starter URLs return 200 first.
-export const V2_INSTALLER_REF = "c9f525ec2ce85dc0fadd2753bff692220ecdd572";
+export const V2_INSTALLER_REF = "c0ec5ba1f586632e481c13935fa7a4624f50a740";
 export const V2_RAW_BASE = `https://raw.githubusercontent.com/blueprintit-ai/shop-os-dashboard/${V2_INSTALLER_REF}/installer`;
 
 export interface V2Options {

@@ -114,7 +114,7 @@ describe("updateLicenseFlags", () => {
 
   it("backfills defaults on records that predate the new fields", async () => {
     const legacy = {
-      key: "SHOP-LEG1-LEG2-LEG3",
+      key: "SHOP-AAA1-AAA2-AAA3",
       customer: "old",
       email: "old@x.y",
       product: "shop-os-foundation",

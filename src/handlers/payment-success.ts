@@ -1,4 +1,5 @@
 import puppeteer from "@cloudflare/puppeteer";
+import { recordPaypalRedemption } from "../payments/coupon";
 import { issueLicense, markEmailSent, LicenseRecord } from "../license-core";
 import {
   sendWelcomeEmail,
@@ -143,6 +144,11 @@ export async function handlePaymentSuccess(
       license = JSON.parse(raw) as LicenseRecord;
     }
   } else {
+    // Stripe counts its own redemptions; PayPal sales are counted here so
+    // coupon limits (e.g. the Founding 50 cap) apply to both checkouts.
+    if (input.paymentProvider === "paypal" && input.promoCode) {
+      await recordPaypalRedemption(env.LICENSES, input.promoCode);
+    }
     const flags = deriveFlagsFromPromo(input.promoCode);
     license = await issueLicense(env.LICENSES, {
       customer: input.customer,

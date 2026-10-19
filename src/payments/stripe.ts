@@ -4,6 +4,8 @@ export interface StripePromotionCode {
   active: boolean;
   max_redemptions: number | null;   // on the promo itself, usually null
   times_redeemed: number;
+  expires_at?: number | null;       // unix seconds
+  customer?: string | null;         // restricted to one Stripe customer
   promotion: {
     type: "coupon";
     coupon: {

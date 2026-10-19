@@ -25,10 +25,10 @@
 
 import { ADMIN_HTML } from "./admin-html.js";
 import { INSTALLS_HTML } from "./installs-html.js";
-import { LicenseRecord, IssueLicenseInput, issueLicense, updateLicenseFlags } from "./license-core.js";
+import { LicenseRecord, IssueLicenseInput, issueLicense, updateLicenseFlags, getLicenseRecord, isLicenseKey } from "./license-core.js";
 import { StripeClient } from "./payments/stripe.js";
 import { PayPalClient } from "./payments/paypal.js";
-import { validateCoupon, BASE_PRICE_CENTS } from "./payments/coupon.js";
+import { validateCoupon, getPaypalRedemptions, BASE_PRICE_CENTS } from "./payments/coupon.js";
 import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
 import { handlePayPalWebhook } from "./handlers/paypal-webhook.js";
 import { handlePaymentSuccess, renderWelcomePdfBytes, sendWelcomeEmailForLicense } from "./handlers/payment-success.js";
@@ -260,6 +260,7 @@ async function handleSetupComplete(req: Request, url: URL, env: Env): Promise<Re
 async function handleInstallStatus(req: Request, url: URL, env: Env): Promise<Response> {
   const key = (url.searchParams.get("key") || "").trim().toUpperCase();
   if (!key) return json(req, { error: "key required" }, 400);
+  if (!isLicenseKey(key)) return json(req, { installed: false });
   const list = await env.LICENSES.list({ prefix: `install-log:${key}:`, limit: 1000 });
   for (const k of [...list.keys].reverse()) {
     const entry = await env.LICENSES.get<InstallLog>(k.name, "json");
@@ -625,7 +626,7 @@ async function handleValidate(req: Request, url: URL, env: Env, bumpLastSeen: bo
   const key = url.searchParams.get("key");
   if (!key) return json(req, { valid: false, error: "missing key" }, 400);
 
-  const record = await env.LICENSES.get<LicenseRecord>(key, "json");
+  const record = await getLicenseRecord(env.LICENSES, key);
   if (!record) return json(req, { valid: false, error: "not found" }, 404);
 
   if (record.cancelled_at) {
@@ -662,7 +663,7 @@ async function resolveInstallLicense(
 ): Promise<{ ok: true; key: string; customer: string; installer: InstallerKind } | { ok: false; reason: string }> {
   const key = (keyRaw || "").trim().toUpperCase();
   if (!key) return { ok: false, reason: "This link is missing its license key." };
-  const record = await env.LICENSES.get<LicenseRecord>(key, "json");
+  const record = await getLicenseRecord(env.LICENSES, key);
   if (!record) return { ok: false, reason: "We could not find a license for this link. Check that the full link from your welcome email was used." };
   if (record.cancelled_at) return { ok: false, reason: "This license has been revoked." };
   if (isExpired(record)) return { ok: false, reason: "This license has expired." };
@@ -1094,7 +1095,7 @@ export default {
         if (!body.code) return json(req, { valid: false, error: "Code is required." }, 400);
         try {
           const stripe = getStripe(env);
-          const result = await validateCoupon(stripe, body.code);
+          const result = await validateCoupon(stripe, body.code, { extraRedemptions: await getPaypalRedemptions(env.LICENSES, body.code) });
           return json(req, result);
         } catch (e) {
           return json(req, { valid: false, error: (e as Error).message }, 500);
@@ -1149,7 +1150,7 @@ export default {
           // Coupons only apply to Foundation in v1; Consultation has no coupon
           // flow yet (see spec non-goals).
           if (productType === "foundation" && body.code) {
-            const r = await validateCoupon(stripe, body.code);
+            const r = await validateCoupon(stripe, body.code, { extraRedemptions: await getPaypalRedemptions(env.LICENSES, body.code) });
             if (!r.valid) return json(req, { error: r.error }, 400);
             promotionCodeId = r.promotionCodeId;
             promoCode = r.code;
@@ -1207,7 +1208,10 @@ export default {
 
           if (body.code) {
             const stripe = getStripe(env);
-            const r = await validateCoupon(stripe, body.code);
+            const r = await validateCoupon(stripe, body.code, {
+              extraRedemptions: await getPaypalRedemptions(env.LICENSES, body.code),
+              channel: "paypal",
+            });
             if (!r.valid) return json(req, { error: r.error }, 400);
             finalPrice = r.finalPrice ?? BASE_PRICE_CENTS;
             promoCode = r.code;

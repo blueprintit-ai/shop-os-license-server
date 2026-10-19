@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { isLicenseKey, getLicenseRecord, updateLicenseFlags, buildLicenseRecord } from "../src/license-core";
-import { validateCoupon, getPaypalRedemptions, recordPaypalRedemption } from "../src/payments/coupon";
+import { validateCoupon, holdPaypalCoupon, recordPaypalRedemption } from "../src/payments/coupon";
 import { StripeClient } from "../src/payments/stripe";
 import { handleStripeWebhook } from "../src/handlers/stripe-webhook";
 
@@ -14,8 +14,12 @@ function memKv(initial: Record<string, string> = {}) {
     }),
     put: vi.fn(async (k: string, v: string) => { store.set(k, v); }),
     delete: vi.fn(async (k: string) => { store.delete(k); }),
-    list: vi.fn(async () => ({ keys: [], list_complete: true })),
+    list: vi.fn(async ({ prefix = "" }: { prefix?: string } = {}) => ({
+      keys: [...store.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name })),
+      list_complete: true,
+    })),
   };
+  (kv as any).__store = store;
   return { kv: kv as unknown as KVNamespace, store, raw: kv };
 }
 
@@ -88,13 +92,41 @@ function stripeWith(p: unknown) {
 }
 
 describe("coupon limits across Stripe and PayPal", () => {
-  it("counts PayPal redemptions toward the coupon cap", async () => {
+  it("counts PayPal sales and pending PayPal orders toward the coupon cap", async () => {
     const p = promo();
-    p.promotion.coupon.times_redeemed = 45;
-    expect((await validateCoupon(stripeWith(p), "FOUNDING50", { extraRedemptions: 4 })).valid).toBe(true);
-    const r = await validateCoupon(stripeWith(p), "FOUNDING50", { extraRedemptions: 5 });
+    p.promotion.coupon.times_redeemed = 47;
+    const { kv } = memKv();
+    await holdPaypalCoupon(kv, "ORDER1", "FOUNDING50", "coup_1");
+    await recordPaypalRedemption(kv, "ORDER1", "FOUNDING50");
+    await holdPaypalCoupon(kv, "ORDER2", "FOUNDING50", "coup_1");
+    // 47 Stripe + 1 PayPal sale + 1 pending PayPal order = 49 of 50.
+    expect((await validateCoupon(stripeWith(p), "FOUNDING50", { kv })).valid).toBe(true);
+    await holdPaypalCoupon(kv, "ORDER3", "FOUNDING50", "coup_1");
+    const r = await validateCoupon(stripeWith(p), "FOUNDING50", { kv });
     expect(r.valid).toBe(false);
     expect(r.error).toMatch(/sold out/i);
+    // The order being captured does not count its own hold.
+    expect((await validateCoupon(stripeWith(p), "FOUNDING50", { kv, channel: "paypal", excludeOrderId: "ORDER3" })).valid).toBe(true);
+  });
+
+  it("a retried PayPal sale is counted once and releases its hold", async () => {
+    const { kv, store } = memKv();
+    await holdPaypalCoupon(kv, "ORDER1", "FOUNDING50", "coup_1");
+    await recordPaypalRedemption(kv, "ORDER1", "FOUNDING50");
+    await recordPaypalRedemption(kv, "ORDER1", "FOUNDING50");
+    const uses = [...store.keys()].filter((k) => k.startsWith("coupon-use:paypal:coup_1:"));
+    expect(uses).toEqual(["coupon-use:paypal:coup_1:ORDER1"]);
+    expect(store.has("coupon-hold:coup_1:ORDER1")).toBe(false);
+  });
+
+  it("PayPal sales through one code count against another code on the same coupon", async () => {
+    const p = promo({ code: "PARTNERB" });
+    p.promotion.coupon.times_redeemed = 49;
+    const { kv } = memKv();
+    await holdPaypalCoupon(kv, "ORDER1", "PARTNERA", "coup_1");
+    await recordPaypalRedemption(kv, "ORDER1", "PARTNERA");
+    const r = await validateCoupon(stripeWith(p), "PARTNERB", { kv });
+    expect(r.valid).toBe(false);
   });
 
   it("enforces the promotion code's own limit", async () => {
@@ -115,14 +147,6 @@ describe("coupon limits across Stripe and PayPal", () => {
     expect((await validateCoupon(stripeWith(restricted), "FOUNDING50", { channel: "paypal" })).valid).toBe(false);
     const firstTime = promo({ restrictions: { first_time_transaction: true, minimum_amount: null, minimum_amount_currency: null } });
     expect((await validateCoupon(stripeWith(firstTime), "FOUNDING50", { channel: "paypal" })).valid).toBe(false);
-  });
-
-  it("PayPal redemption counter increments per code", async () => {
-    const { kv } = memKv();
-    expect(await getPaypalRedemptions(kv, "founding50")).toBe(0);
-    await recordPaypalRedemption(kv, "FOUNDING50");
-    await recordPaypalRedemption(kv, " founding50 ");
-    expect(await getPaypalRedemptions(kv, "FOUNDING50")).toBe(2);
   });
 });
 
@@ -158,6 +182,34 @@ describe("Stripe webhook only licenses our own paid checkouts", () => {
     const res = await handleStripeWebhook(await signedEvent("checkout.session.completed"), e);
     expect(await res.text()).toMatch(/payment not complete/);
     expect(raw.put).not.toHaveBeenCalled();
+  });
+
+  it("licenses a paid checkout delivered by async_payment_succeeded, once", async () => {
+    vi.spyOn(StripeClient.prototype, "retrieveCheckoutSession").mockResolvedValue({
+      id: "cs_test_1", payment_status: "paid", customer_email: "a@b.co", amount_total: 200000,
+      metadata: { source: "shop-ossi", productType: "foundation" },
+    } as any);
+    const { e } = env();
+    const res = await handleStripeWebhook(await signedEvent("checkout.session.async_payment_succeeded"), e);
+    expect(await res.text()).toBe("ok");
+    const store = (e.LICENSES as any).__store as Map<string, string>;
+    const licenses = () => [...store.keys()].filter((k) => k.startsWith("SHOP-"));
+    expect(licenses()).toHaveLength(1);
+    expect(store.get("payment:stripe:cs_test_1")).toBe(licenses()[0]);
+    // A later completed event for the same session must not issue a second license.
+    await handleStripeWebhook(await signedEvent("checkout.session.completed"), e);
+    expect(licenses()).toHaveLength(1);
+  });
+
+  it("licenses a 100%-off checkout (no_payment_required)", async () => {
+    vi.spyOn(StripeClient.prototype, "retrieveCheckoutSession").mockResolvedValue({
+      id: "cs_test_1", payment_status: "no_payment_required", customer_email: "a@b.co", amount_total: 0,
+      metadata: { source: "shop-ossi", productType: "foundation", promoCode: "GIFT100" },
+    } as any);
+    const { e } = env();
+    expect(await (await handleStripeWebhook(await signedEvent("checkout.session.completed"), e)).text()).toBe("ok");
+    const store = (e.LICENSES as any).__store as Map<string, string>;
+    expect([...store.keys()].filter((k) => k.startsWith("SHOP-"))).toHaveLength(1);
   });
 
   it("still ignores unrelated event types", async () => {

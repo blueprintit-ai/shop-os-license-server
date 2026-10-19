@@ -144,11 +144,6 @@ export async function handlePaymentSuccess(
       license = JSON.parse(raw) as LicenseRecord;
     }
   } else {
-    // Stripe counts its own redemptions; PayPal sales are counted here so
-    // coupon limits (e.g. the Founding 50 cap) apply to both checkouts.
-    if (input.paymentProvider === "paypal" && input.promoCode) {
-      await recordPaypalRedemption(env.LICENSES, input.promoCode);
-    }
     const flags = deriveFlagsFromPromo(input.promoCode);
     license = await issueLicense(env.LICENSES, {
       customer: input.customer,
@@ -165,6 +160,12 @@ export async function handlePaymentSuccess(
       },
     });
     await env.LICENSES.put(idemKey, license.key);
+  }
+
+  // Stripe counts its own redemptions; PayPal sales are recorded here, keyed
+  // by order id so webhook/capture retries never count a sale twice.
+  if (input.paymentProvider === "paypal" && input.promoCode) {
+    await recordPaypalRedemption(env.LICENSES, input.paymentId, input.promoCode);
   }
 
   // Send email only if not already sent

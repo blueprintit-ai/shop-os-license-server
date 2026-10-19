@@ -28,7 +28,7 @@ import { INSTALLS_HTML } from "./installs-html.js";
 import { LicenseRecord, IssueLicenseInput, issueLicense, updateLicenseFlags, getLicenseRecord, isLicenseKey } from "./license-core.js";
 import { StripeClient } from "./payments/stripe.js";
 import { PayPalClient } from "./payments/paypal.js";
-import { validateCoupon, getPaypalRedemptions, BASE_PRICE_CENTS } from "./payments/coupon.js";
+import { validateCoupon, holdPaypalCoupon, getPaypalOrderCoupon, BASE_PRICE_CENTS } from "./payments/coupon.js";
 import { handleStripeWebhook } from "./handlers/stripe-webhook.js";
 import { handlePayPalWebhook } from "./handlers/paypal-webhook.js";
 import { handlePaymentSuccess, renderWelcomePdfBytes, sendWelcomeEmailForLicense } from "./handlers/payment-success.js";
@@ -1095,7 +1095,7 @@ export default {
         if (!body.code) return json(req, { valid: false, error: "Code is required." }, 400);
         try {
           const stripe = getStripe(env);
-          const result = await validateCoupon(stripe, body.code, { extraRedemptions: await getPaypalRedemptions(env.LICENSES, body.code) });
+          const result = await validateCoupon(stripe, body.code, { kv: env.LICENSES });
           return json(req, result);
         } catch (e) {
           return json(req, { valid: false, error: (e as Error).message }, 500);
@@ -1150,7 +1150,7 @@ export default {
           // Coupons only apply to Foundation in v1; Consultation has no coupon
           // flow yet (see spec non-goals).
           if (productType === "foundation" && body.code) {
-            const r = await validateCoupon(stripe, body.code, { extraRedemptions: await getPaypalRedemptions(env.LICENSES, body.code) });
+            const r = await validateCoupon(stripe, body.code, { kv: env.LICENSES });
             if (!r.valid) return json(req, { error: r.error }, 400);
             promotionCodeId = r.promotionCodeId;
             promoCode = r.code;
@@ -1205,14 +1205,13 @@ export default {
           let promoCode: string | undefined;
           let affiliate: string | null = null;
           let discountAmount: number | undefined;
+          let couponId: string | undefined;
 
           if (body.code) {
             const stripe = getStripe(env);
-            const r = await validateCoupon(stripe, body.code, {
-              extraRedemptions: await getPaypalRedemptions(env.LICENSES, body.code),
-              channel: "paypal",
-            });
+            const r = await validateCoupon(stripe, body.code, { kv: env.LICENSES, channel: "paypal" });
             if (!r.valid) return json(req, { error: r.error }, 400);
+            couponId = r.couponId;
             finalPrice = r.finalPrice ?? BASE_PRICE_CENTS;
             promoCode = r.code;
             affiliate = r.affiliate ?? null;
@@ -1231,6 +1230,9 @@ export default {
               ...(discountAmount ? { discountAmount: String(discountAmount) } : {}),
             },
           });
+          // Hold one use of the coupon until this order is paid or the hold
+          // expires, so concurrent PayPal orders cannot overrun the cap.
+          if (promoCode && couponId) await holdPaypalCoupon(env.LICENSES, order.id, promoCode, couponId);
           return json(req, { orderId: order.id });
         } catch (e) {
           return json(req, { error: (e as Error).message }, 500);
@@ -1244,6 +1246,15 @@ export default {
         if (!body.orderId) return json(req, { error: "orderId is required." }, 400);
 
         try {
+          // Re-check the coupon before taking the money: the cap may have
+          // been reached since this order was created.
+          const orderCoupon = await getPaypalOrderCoupon(env.LICENSES, body.orderId);
+          if (orderCoupon) {
+            const r = await validateCoupon(getStripe(env), orderCoupon.code, {
+              kv: env.LICENSES, channel: "paypal", excludeOrderId: body.orderId,
+            });
+            if (!r.valid) return json(req, { error: r.error }, 409);
+          }
           const paypal = getPayPal(env);
           const captured = await paypal.captureOrder(body.orderId);
           if (captured.status !== "COMPLETED") {

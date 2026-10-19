@@ -66,7 +66,9 @@ export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): 
   if (!valid) return new Response("Invalid signature", { status: 401 });
 
   const event = JSON.parse(rawBody) as { id: string; type: string; data: { object: any } };
-  if (event.type !== "checkout.session.completed") {
+  // async_payment_succeeded delivers delayed methods (e.g. bank debits) once
+  // the money clears; completed alone would leave those unpaid sessions behind.
+  if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") {
     return new Response("ignored", { status: 200 });
   }
 
@@ -77,6 +79,19 @@ export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): 
   // Re-fetch with expanded discounts to get the promo code reliably.
   const stripe = new StripeClient(stripeKey);
   const full = await stripe.retrieveCheckoutSession(session.id);
+
+  // Only sessions created by /create-stripe-checkout-session carry our source
+  // tag. Anything else on this Stripe account (payment links, invoices, other
+  // products) must never mint a license or send a welcome email.
+  const source = full.metadata?.source;
+  if (source !== "shop-ossi" && source !== "products") {
+    return new Response("ignored: not a Blueprint OS checkout", { status: 200 });
+  }
+  // "no_payment_required" covers 100%-off codes; "unpaid" waits for
+  // async_payment_succeeded.
+  if (full.payment_status !== "paid" && full.payment_status !== "no_payment_required") {
+    return new Response("ignored: payment not complete", { status: 200 });
+  }
 
   const promoCode = full.metadata?.promoCode ?? extractPromoFromSession(full);
   const affiliate = full.metadata?.affiliate ?? null;

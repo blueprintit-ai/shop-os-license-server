@@ -13,6 +13,28 @@
 // Crockford Base32: 0-9 + A-Z, excluding I, L, O, U. 32 characters.
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
+const LICENSE_KEY_RE = /^SHOP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
+
+/**
+ * True only for strings shaped like a license key. The LICENSES namespace also
+ * holds install logs, payment markers and counters, so every public lookup
+ * must pass this before reading KV; otherwise an internal key would "validate".
+ */
+export function isLicenseKey(key: unknown): key is string {
+  return typeof key === "string" && LICENSE_KEY_RE.test(key);
+}
+
+/**
+ * Read a license record by key, returning null unless the key has license
+ * format and the stored record is a real license for that same key.
+ */
+export async function getLicenseRecord(kv: KVNamespace, key: string): Promise<LicenseRecord | null> {
+  if (!isLicenseKey(key)) return null;
+  const record = await kv.get<LicenseRecord>(key, "json");
+  if (!record || typeof record !== "object" || record.key !== key) return null;
+  return record;
+}
+
 export interface LicenseRecord {
   key: string;
   customer: string;
@@ -149,9 +171,11 @@ export async function updateLicenseFlags(
   licenseKey: string,
   patch: { lifetimeUpdates?: boolean }
 ): Promise<LicenseRecord | null> {
+  if (!isLicenseKey(licenseKey)) return null;
   const raw = await kv.get(licenseKey);
   if (!raw) return null;
   const rec = JSON.parse(raw) as LicenseRecord;
+  if (!rec || rec.key !== licenseKey) return null;
   if (patch.lifetimeUpdates !== undefined) rec.lifetimeUpdates = patch.lifetimeUpdates;
   // Backfill defaults for older records that predate these fields.
   if (rec.lifetimeUpdates === undefined) rec.lifetimeUpdates = false;

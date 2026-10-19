@@ -1,4 +1,5 @@
 import puppeteer from "@cloudflare/puppeteer";
+import { recordPaypalRedemption } from "../payments/coupon";
 import { issueLicense, markEmailSent, LicenseRecord } from "../license-core";
 import {
   sendWelcomeEmail,
@@ -159,6 +160,12 @@ export async function handlePaymentSuccess(
       },
     });
     await env.LICENSES.put(idemKey, license.key);
+  }
+
+  // Stripe counts its own redemptions; PayPal sales are recorded here, keyed
+  // by order id so webhook/capture retries never count a sale twice.
+  if (input.paymentProvider === "paypal" && input.promoCode) {
+    await recordPaypalRedemption(env.LICENSES, input.paymentId, input.promoCode);
   }
 
   // Send email only if not already sent

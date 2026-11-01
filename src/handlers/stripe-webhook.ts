@@ -44,6 +44,8 @@ function constantTimeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+const PRODUCT_TYPES: readonly ProductType[] = ["foundation", "consultation", "lead-handler", "bundle", "ai-assistant"];
+
 export interface StripeWebhookEnv {
   LICENSES: KVNamespace;
   RESEND_API_KEY?: string;
@@ -71,6 +73,12 @@ export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): 
   }
 
   const session = event.data.object;
+  // The Stripe account is shared with other Blueprint IT products (My Study Guide, the portal), and Stripe sends this
+  // endpoint every checkout in it. Only sessions made by /create-stripe-checkout-session carry a productType; anything
+  // else is not a Shop OS purchase and must never issue a license or send the welcome email.
+  const productType = PRODUCT_TYPES.find(t => t === session.metadata?.productType);
+  if (!productType) return new Response("ignored", { status: 200 });
+
   const stripeKey = env.STRIPE_SECRET_KEY ?? env.STRIPE_SECRET_KEY_TEST;
   if (!stripeKey) return new Response("Stripe key not configured", { status: 500 });
 
@@ -80,15 +88,6 @@ export async function handleStripeWebhook(req: Request, env: StripeWebhookEnv): 
 
   const promoCode = full.metadata?.promoCode ?? extractPromoFromSession(full);
   const affiliate = full.metadata?.affiliate ?? null;
-
-  // productType is set by /create-stripe-checkout-session in session metadata.
-  // Missing or unknown values fall back to "foundation" so any pre-existing
-  // sessions in flight during deploy keep going through the original path.
-  const rawType = full.metadata?.productType;
-  const productType: ProductType =
-    rawType === "consultation" || rawType === "lead-handler" || rawType === "bundle" || rawType === "ai-assistant"
-      ? rawType
-      : "foundation";
 
   await handlePaymentSuccess(env, {
     paymentProvider: "stripe",

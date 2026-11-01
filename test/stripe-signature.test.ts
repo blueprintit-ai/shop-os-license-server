@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { verifyStripeSignature } from "../src/handlers/stripe-webhook";
 import { handleStripeWebhook } from "../src/handlers/stripe-webhook";
 
@@ -78,5 +78,30 @@ describe("handleStripeWebhook", () => {
     const res = await handleStripeWebhook(req, env);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("ignored");
+  });
+
+  // The Stripe account is shared with other Blueprint IT products (My Study Guide, the portal). Their checkouts carry
+  // no productType and must never be treated as a Shop OS purchase (a 2026-11-01 My Study Guide checkout got a license).
+  it.each([
+    ["another product's checkout (no productType)", { family_id: "fam_1", kind: "subscription" }],
+    ["no metadata at all", undefined],
+    ["an unknown productType", { productType: "something-else" }],
+  ])("ignores %s without fetching the session or issuing a license", async (_label, metadata) => {
+    const ts = String(Math.floor(Date.now() / 1000));
+    const body = JSON.stringify({ id: "evt_3", type: "checkout.session.completed", data: { object: { id: "cs_live_other", customer_email: "someone@example.com", amount_total: 0, metadata } } });
+    const sig = await makeSig(body, ts, "whsec_test");
+    const req = new Request("https://x.example/webhook/stripe", { method: "POST", body, headers: { "stripe-signature": sig } });
+    const kvPut = vi.fn();
+    const env = { LICENSES: { put: kvPut, get: vi.fn() } as any, ASSETS: {} as any, STRIPE_WEBHOOK_SECRET_TEST: "whsec_test", STRIPE_SECRET_KEY_TEST: "sk_test_x" } as any;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("must not call Stripe"));
+    try {
+      const res = await handleStripeWebhook(req, env);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("ignored");
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(kvPut).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });

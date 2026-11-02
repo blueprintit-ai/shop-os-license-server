@@ -4,6 +4,7 @@ export interface StripePromotionCode {
   active: boolean;
   max_redemptions: number | null;   // on the promo itself, usually null
   times_redeemed: number;
+  metadata?: Record<string, string>;
   promotion: {
     type: "coupon";
     coupon: {
@@ -35,6 +36,9 @@ export interface StripeCheckoutSession {
   metadata: Record<string, string>;
   discounts?: { promotion_code: string | StripePromotionCode }[];
 }
+
+/** Products sharing this Stripe account whose promotion codes must not work here. */
+const FOREIGN_APPS = ["mystudyguide"];
 
 export class StripeClient {
   constructor(
@@ -77,12 +81,15 @@ export class StripeClient {
   }
 
   // Look up an active promotion code by its customer-facing string (e.g. "FOUNDING50").
-  // Returns null if not found / not active.
+  // Returns null if not found / not active, or if the code belongs to another product in this
+  // shared Stripe account (My Study Guide tags its codes metadata.app = "mystudyguide").
   async findPromotionCode(code: string): Promise<StripePromotionCode | null> {
     const data = await this.call<{ data: StripePromotionCode[] }>(
       `/v1/promotion_codes?code=${encodeURIComponent(code)}&active=true&limit=1&expand[]=data.promotion.coupon`,
     );
-    return data.data[0] ?? null;
+    const promo = data.data[0] ?? null;
+    if (promo && FOREIGN_APPS.includes(promo.metadata?.app ?? "")) return null;
+    return promo;
   }
 
   // Create a Stripe Checkout session, with optional promo code.

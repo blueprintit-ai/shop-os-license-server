@@ -52,6 +52,24 @@ describe("StripeClient", () => {
     expect(await c.findPromotionCode("nope")).toBeNull();
   });
 
+  it("findPromotionCode ignores a My Study Guide code (shared Stripe account)", async () => {
+    const promo = { id: "promo_m", code: "SCIOLY25", active: true, metadata: { app: "mystudyguide" } };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [promo] }), { status: 200 }),
+    );
+    const c = new StripeClient("sk_test_x", fetchMock as unknown as typeof fetch);
+    expect(await c.findPromotionCode("SCIOLY25")).toBeNull();
+  });
+
+  it("findPromotionCode returns an untagged (Shop OS) code", async () => {
+    const promo = { id: "promo_s", code: "FOUNDING50", active: true, metadata: {} };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ data: [promo] }), { status: 200 }),
+    );
+    const c = new StripeClient("sk_test_x", fetchMock as unknown as typeof fetch);
+    expect((await c.findPromotionCode("FOUNDING50"))?.id).toBe("promo_s");
+  });
+
   it("createCheckoutSession encodes promotionCodeId in form", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
